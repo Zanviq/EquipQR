@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@/server/db/client";
+import { SESSION_COOKIE } from "./constants";
 
-export const SESSION_COOKIE = "equipqr_session";
+export { SESSION_COOKIE };
 export const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 
 function digest(token: string) {

@@ -9,7 +9,13 @@ export async function issueTransferTicket(input: { equipmentId: string; actorUse
   const expiresAt = new Date(now.getTime() + TRANSFER_TTL_MS);
   try {
     const ticket = await prisma.$transaction(async (tx) => {
-      const assignment = await tx.assignment.findFirst({ where: { equipmentId: input.equipmentId, endedAt: null } });
+      const [assignment, equipment] = await Promise.all([
+        tx.assignment.findFirst({ where: { equipmentId: input.equipmentId, endedAt: null } }),
+        tx.equipment.findUnique({ where: { id: input.equipmentId } })
+      ]);
+      if (!equipment || equipment.operationalStatus !== "ACTIVE") {
+        throw new DomainError("OUT_OF_SERVICE", "사용 중지된 장비입니다.", 409);
+      }
       if (!assignment || assignment.userId !== input.actorUserId) {
         throw new DomainError("NOT_CURRENT_HOLDER", "현재 사용자만 전달 QR을 만들 수 있습니다.", 403);
       }

@@ -1,16 +1,29 @@
-FROM node:24-bookworm-slim AS deps
+FROM node:24-bookworm-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/*
+
+FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:24-bookworm-slim AS builder
+FROM base AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run prisma:generate && npm run build
+RUN export DATABASE_URL="$(printf '%s://%s:%s@%s:%s/%s' postgresql build build 127.0.0.1 5432 build)" && npm run prisma:generate && npm run build
 
-FROM node:24-bookworm-slim AS runner
+FROM deps AS migrator
+WORKDIR /app
+COPY src ./src
+COPY scripts ./scripts
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+COPY tsconfig.json ./
+RUN export DATABASE_URL="$(printf '%s://%s:%s@%s:%s/%s' postgresql build build 127.0.0.1 5432 build)" && npm run prisma:generate
+CMD ["npx", "prisma", "migrate", "deploy"]
+
+FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 RUN useradd --system --uid 1001 nextjs

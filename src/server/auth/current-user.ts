@@ -1,4 +1,5 @@
 import type { UserRole } from "@/generated/prisma/enums";
+import { cookies } from "next/headers";
 import { DomainError } from "@/server/domain/errors";
 import { getSessionUser, SESSION_COOKIE } from "./session";
 
@@ -18,4 +19,9 @@ export async function requireRequestUser(request: Request, role?: UserRole) {
   if (!user) throw new DomainError("AUTH_REQUIRED", "로그인이 필요합니다.", 401);
   if (role && user.role !== role) throw new DomainError("FORBIDDEN", "권한이 없습니다.", 403);
   return user;
+}
+
+export async function getCurrentUser() {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? getSessionUser(token) : null;
 }

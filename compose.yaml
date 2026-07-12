@@ -19,6 +19,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       APP_ORIGIN: http://localhost:3000
+      SESSION_COOKIE_SECURE: "false"
     depends_on:
       db:
         condition: service_healthy

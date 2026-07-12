@@ -63,4 +63,23 @@ describe("equipment transfer", () => {
     const result = await instantTransfer({ publicCode: allowed.device.publicCode, recipientUserId: allowed.recipient.id });
     expect(result.nextAssignment).toMatchObject({ userId: allowed.recipient.id, acquisitionType: "INSTANT_QR" });
   });
+
+  it("blocks ticket operations while equipment is out of service", async () => {
+    const data = await fixture("TRANSFER_QR");
+    await prisma.equipment.update({ where: { id: data.device.id }, data: { operationalStatus: "OUT_OF_SERVICE" } });
+    await expect(issueTransferTicket({ equipmentId: data.device.id, actorUserId: data.sender.id }))
+      .rejects.toMatchObject({ code: "OUT_OF_SERVICE" });
+  });
+
+  it("allows only one winner when acceptance and cancellation race", async () => {
+    const data = await fixture("TRANSFER_QR");
+    const issued = await issueTransferTicket({ equipmentId: data.device.id, actorUserId: data.sender.id });
+    const outcomes = await Promise.allSettled([
+      acceptTransferTicket({ token: issued.token, recipientUserId: data.recipient.id }),
+      cancelTransferTicket({ ticketId: issued.ticketId, actorUserId: data.sender.id })
+    ]);
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    const stored = await prisma.transferTicket.findUniqueOrThrow({ where: { id: issued.ticketId } });
+    expect(Boolean(stored.usedAt) && Boolean(stored.cancelledAt)).toBe(false);
+  });
 });

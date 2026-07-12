@@ -13,7 +13,8 @@ export async function cancelTransferTicket(input: { ticketId: string; actorUserI
       throw new DomainError("NOT_CURRENT_HOLDER", "현재 사용자만 전달 QR을 취소할 수 있습니다.", 403);
     }
     if (ticket.usedAt || ticket.cancelledAt) throw new DomainError("TRANSFER_USED", "이미 종료된 전달 QR입니다.", 409);
-    const cancelled = await tx.transferTicket.update({ where: { id: ticket.id }, data: { cancelledAt: now } });
+    const result = await tx.transferTicket.updateMany({ where: { id: ticket.id, usedAt: null, cancelledAt: null }, data: { cancelledAt: now } });
+    if (result.count !== 1) throw new DomainError("TRANSFER_USED", "이미 종료된 전달 QR입니다.", 409);
     await tx.auditEvent.create({
       data: {
         eventType: "TRANSFER_TICKET_CANCELLED",
@@ -23,6 +24,6 @@ export async function cancelTransferTicket(input: { ticketId: string; actorUserI
         transferTicketId: ticket.id
       }
     });
-    return cancelled;
+    return tx.transferTicket.findUniqueOrThrow({ where: { id: ticket.id } });
   });
 }

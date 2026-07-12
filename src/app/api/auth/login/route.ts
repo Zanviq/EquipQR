@@ -4,6 +4,8 @@ import { prisma } from "@/server/db/client";
 import { normalizeEmployeeNumber } from "@/server/auth/employee-number";
 import { verifyPassword } from "@/server/auth/password";
 import { createSession, SESSION_COOKIE } from "@/server/auth/session";
+import { enforceRateLimit, requestIp } from "@/server/http/rate-limit";
+import { domainErrorResponse } from "@/server/http/response";
 
 const inputSchema = z.object({
   employeeNumber: z.string().min(1).max(64),
@@ -16,6 +18,9 @@ const invalid = () => NextResponse.json(
 );
 
 export async function POST(request: Request) {
+  try {
+  const ip = requestIp(request);
+  enforceRateLimit({ key: `login:ip:${ip}`, limit: 10, windowMs: 15 * 60 * 1000 });
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return invalid();
 
@@ -30,7 +35,6 @@ export async function POST(request: Request) {
   if (!user || user.status !== "ACTIVE") return invalid();
   if (!(await verifyPassword(user.passwordHash, parsed.data.password))) return invalid();
 
-  const ip = request.headers.get("cf-connecting-ip") ?? undefined;
   const session = await createSession(user.id, ip);
   const response = NextResponse.json({ user: { name: user.name, role: user.role } });
   response.cookies.set(SESSION_COOKIE, session.token, {
@@ -41,4 +45,5 @@ export async function POST(request: Request) {
     expires: session.expiresAt
   });
   return response;
+  } catch (error) { return domainErrorResponse(error); }
 }

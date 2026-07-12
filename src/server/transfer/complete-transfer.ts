@@ -12,10 +12,12 @@ export interface CompleteTransferInput {
 
 export async function completeTransfer(tx: Prisma.TransactionClient, input: CompleteTransferInput) {
   const now = input.now ?? new Date();
-  const [active, recipient] = await Promise.all([
+  const [active, recipient, equipment] = await Promise.all([
     tx.assignment.findUnique({ where: { id: input.fromAssignmentId } }),
-    tx.user.findUnique({ where: { id: input.recipientUserId } })
+    tx.user.findUnique({ where: { id: input.recipientUserId } }),
+    tx.equipment.findUnique({ where: { id: input.equipmentId } })
   ]);
+  if (!equipment || equipment.operationalStatus !== "ACTIVE") throw new DomainError("OUT_OF_SERVICE", "사용 중지된 장비입니다.", 409);
   if (!active || active.equipmentId !== input.equipmentId || active.endedAt) {
     throw new DomainError("STATE_CONFLICT", "장비 책임자가 이미 변경되었습니다.", 409);
   }
@@ -33,10 +35,11 @@ export async function completeTransfer(tx: Prisma.TransactionClient, input: Comp
     }
   });
   if (input.ticketId) {
-    await tx.transferTicket.update({
-      where: { id: input.ticketId },
+    const consumed = await tx.transferTicket.updateMany({
+      where: { id: input.ticketId, usedAt: null, cancelledAt: null },
       data: { usedAt: now, acceptedByUserId: recipient.id }
     });
+    if (consumed.count !== 1) throw new DomainError("TRANSFER_USED", "이미 사용되었거나 취소된 전달 QR입니다.", 409);
   }
   await tx.transferTicket.updateMany({
     where: {
