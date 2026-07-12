@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  EMPLOYEE
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TransferMode {
+  TRANSFER_QR
+  INSTANT_EQUIPMENT_QR
+}
+
+enum OperationalStatus {
+  ACTIVE
+  OUT_OF_SERVICE
+}
+
+enum AcquisitionType {
+  CHECKOUT
+  TRANSFER_QR
+  INSTANT_QR
+  ADMIN
+}
+
+enum AuditEventType {
+  USER_CREATED
+  USER_UPDATED
+  PASSWORD_RESET
+  CHECKOUT
+  RETURN
+  TRANSFER
+  TRANSFER_TICKET_CREATED
+  TRANSFER_TICKET_CANCELLED
+  EQUIPMENT_CREATED
+  EQUIPMENT_UPDATED
+  ADMIN_REASSIGN
+  ADMIN_RECALL
+  STATUS_CHANGED
+}
+
+model User {
+  id                  String       @id @default(uuid()) @db.Uuid
+  employeeNumber      String       @unique @map("employee_number")
+  name                String
+  passwordHash        String       @map("password_hash")
+  role                UserRole     @default(EMPLOYEE)
+  status              UserStatus   @default(ACTIVE)
+  defaultTransferMode TransferMode @default(TRANSFER_QR) @map("default_transfer_mode")
+  passwordChangedAt   DateTime     @default(now()) @map("password_changed_at")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  sessions              Session[]
+  assignments           Assignment[]
+  createdTransferTickets TransferTicket[] @relation("CreatedTransferTickets")
+  acceptedTransferTickets TransferTicket[] @relation("AcceptedTransferTickets")
+  actedAuditEvents       AuditEvent[] @relation("AuditActor")
+  previousAuditEvents    AuditEvent[] @relation("AuditPreviousUser")
+  nextAuditEvents        AuditEvent[] @relation("AuditNextUser")
+
+  @@map("users")
+}
+
+model Session {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid @map("user_id")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdIp  String?   @map("created_ip")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
+}
+
+model Equipment {
+  id                String            @id @default(uuid()) @db.Uuid
+  assetNumber       String            @unique @map("asset_number")
+  publicCode        String            @unique @map("public_code")
+  name              String
+  operationalStatus OperationalStatus @default(ACTIVE) @map("operational_status")
+  note              String?
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  retiredAt         DateTime?         @map("retired_at")
+
+  assignments Assignment[]
+  transferTickets TransferTicket[]
+  auditEvents AuditEvent[]
+
+  @@map("equipment")
+}
+
+model Assignment {
+  id                   String          @id @default(uuid()) @db.Uuid
+  equipmentId          String          @db.Uuid @map("equipment_id")
+  userId               String          @db.Uuid @map("user_id")
+  transferModeSnapshot TransferMode    @map("transfer_mode_snapshot")
+  acquisitionType      AcquisitionType @map("acquisition_type")
+  startedAt            DateTime        @default(now()) @map("started_at")
+  endedAt              DateTime?       @map("ended_at")
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transferTickets TransferTicket[]
+  auditEvents AuditEvent[]
+
+  @@index([userId, endedAt])
+  @@index([equipmentId, endedAt])
+  @@map("assignments")
+}
+
+model TransferTicket {
+  id               String    @id @default(uuid()) @db.Uuid
+  equipmentId      String    @db.Uuid @map("equipment_id")
+  fromAssignmentId String    @db.Uuid @map("from_assignment_id")
+  createdByUserId  String    @db.Uuid @map("created_by_user_id")
+  tokenHash        String    @unique @map("token_hash")
+  expiresAt        DateTime  @map("expires_at")
+  usedAt           DateTime? @map("used_at")
+  cancelledAt      DateTime? @map("cancelled_at")
+  acceptedByUserId String?   @db.Uuid @map("accepted_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  fromAssignment Assignment @relation(fields: [fromAssignmentId], references: [id], onDelete: Restrict)
+  createdByUser User @relation("CreatedTransferTickets", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  acceptedByUser User? @relation("AcceptedTransferTickets", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+  auditEvents AuditEvent[]
+
+  @@index([equipmentId, expiresAt])
+  @@map("transfer_tickets")
+}
+
+model AuditEvent {
+  id               String         @id @default(uuid()) @db.Uuid
+  eventType        AuditEventType @map("event_type")
+  equipmentId      String?        @db.Uuid @map("equipment_id")
+  actorUserId      String?        @db.Uuid @map("actor_user_id")
+  previousUserId   String?        @db.Uuid @map("previous_user_id")
+  nextUserId       String?        @db.Uuid @map("next_user_id")
+  assignmentId     String?        @db.Uuid @map("assignment_id")
+  transferTicketId String?        @db.Uuid @map("transfer_ticket_id")
+  reason           String?
+  metadata         Json?          @map("metadata_json")
+  occurredAt       DateTime       @default(now()) @map("occurred_at")
+
+  equipment Equipment? @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  actorUser User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  previousUser User? @relation("AuditPreviousUser", fields: [previousUserId], references: [id], onDelete: Restrict)
+  nextUser User? @relation("AuditNextUser", fields: [nextUserId], references: [id], onDelete: Restrict)
+  assignment Assignment? @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  transferTicket TransferTicket? @relation(fields: [transferTicketId], references: [id], onDelete: Restrict)
+
+  @@index([equipmentId, occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@map("audit_events")
+}
