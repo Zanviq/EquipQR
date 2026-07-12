@@ -1,12 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/server/db/client";
+import { resetDatabase } from "@/test/reset-database";
 import { createSession, SESSION_COOKIE } from "./session";
 import { getRequestUser, requireRequestUser } from "./current-user";
 
 describe("request authentication", () => {
   beforeEach(async () => {
-    await prisma.session.deleteMany();
-    await prisma.user.deleteMany();
+    await resetDatabase();
   });
   afterAll(() => prisma.$disconnect());
 

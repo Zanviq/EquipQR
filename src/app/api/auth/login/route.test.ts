@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/server/db/client";
+import { resetDatabase } from "@/test/reset-database";
 import { hashPassword } from "@/server/auth/password";
 import { POST } from "./route";
 
@@ -13,8 +14,7 @@ function request(body: unknown) {
 
 describe("POST /api/auth/login", () => {
   beforeEach(async () => {
-    await prisma.session.deleteMany();
-    await prisma.user.deleteMany();
+    await resetDatabase();
   });
   afterAll(() => prisma.$disconnect());
 
