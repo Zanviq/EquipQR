@@ -2,7 +2,7 @@
 
 qr로 장비 대여 현황 파악 및 전달 확인 가능한 웹 서비스
 
-기술 스택: 미정 (설계 단계에서 결정)
+기술 스택: Next.js App Router, TypeScript, PostgreSQL, Prisma ORM, Tailwind CSS, Docker Compose, Cloudflare Tunnel
 
 ---
 
