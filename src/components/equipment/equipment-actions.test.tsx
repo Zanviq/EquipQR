@@ -64,7 +64,7 @@ describe("EquipmentActions", () => {
     expect(screen.getByRole("button", { name: "대여하기" })).toBeEnabled();
   });
 
-  it("posts an instant transfer only once in React StrictMode", async () => {
+  it("finishes an instant transfer once and leaves before automatic return can run", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({ message: "전달을 완료했습니다." })
@@ -73,8 +73,9 @@ describe("EquipmentActions", () => {
 
     render(<StrictMode><EquipmentActions publicCode="PUBLIC-1" actions={["INSTANT_TRANSFER"]} scanActionMode="CONFIRM" /></StrictMode>);
 
-    expect(await screen.findByText("전달을 완료했습니다.")).toBeVisible();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/my-equipment"));
     expect(fetchMock).toHaveBeenCalledOnce();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("keeps the current transfer ticket when cancellation fails", async () => {

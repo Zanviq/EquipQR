@@ -3,6 +3,7 @@ import { EquipmentPassport } from "@/components/equipment/equipment-passport";
 import { getCurrentUser } from "@/server/auth/current-user";
 import { prisma } from "@/server/db/client";
 import { getEffectiveStatus } from "@/server/equipment/effective-status";
+import { equipmentWorkPath } from "@/lib/equipment-entry";
 
 const date = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" });
 
@@ -31,7 +32,7 @@ export default async function MyEquipmentPage() {
         const mode = assignment.transferModeSnapshot === "TRANSFER_QR" ? "전달 QR 방식" : "장비 QR 즉시 전달";
         return (
           <EquipmentPassport key={assignment.id} name={assignment.equipment.name} assetNumber={assignment.equipment.assetNumber} status={status} meta={`${date.format(assignment.startedAt)} · ${mode}`}>
-            <Link className="button button-primary" href={`/scan/equipment/${assignment.equipment.publicCode}`}>장비 작업</Link>
+            <Link className="button button-primary" href={equipmentWorkPath(assignment.equipment.publicCode)}>장비 작업</Link>
           </EquipmentPassport>
         );
       }) : <div className="card empty-state"><strong>보유 중인 장비가 없습니다.</strong><p>장비 QR을 스캔해 대여를 시작하세요.</p><Link className="button button-primary" href="/scan">QR 스캔</Link></div>}

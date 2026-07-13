@@ -71,7 +71,6 @@ export function EquipmentActions({ publicCode, actions, scanActionMode }: { publ
           const body = await response.json() as { message?: string };
           if (!mountedRef.current || automaticRequestRef.current !== requestKey) return;
           if (!response.ok) setError(body.message ?? "작업을 완료하지 못했습니다.");
-          else if (instantTransfer) { setMessage(body.message ?? "전달을 완료했습니다."); router.refresh(); }
           else router.replace("/my-equipment");
         } catch {
           if (mountedRef.current && automaticRequestRef.current === requestKey) setError("네트워크 연결을 확인하고 다시 스캔해 주세요.");
