@@ -21,6 +21,10 @@ export async function returnEquipment(input: ReturnInput) {
       }
       const endedAt = new Date();
       const assignment = await tx.assignment.update({ where: { id: active.id }, data: { endedAt } });
+      await tx.transferObservation.updateMany({
+        where: { equipmentId: equipment.id, resolvedAt: null },
+        data: { resolvedAt: endedAt }
+      });
       await tx.transferTicket.updateMany({
         where: { equipmentId: equipment.id, usedAt: null, cancelledAt: null },
         data: { cancelledAt: endedAt }

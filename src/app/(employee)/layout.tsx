@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { EmployeeNav } from "@/components/navigation/employee-nav";
 import { LogoutButton } from "@/components/navigation/logout-button";
 import { getCurrentUser } from "@/server/auth/current-user";
+import { NotificationCenter } from "@/components/notifications/notification-center";
 
 export default async function EmployeeLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -23,6 +24,7 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
           </div>
         </div>
       </header>
+      <NotificationCenter />
       {children}
       <EmployeeNav />
     </div>

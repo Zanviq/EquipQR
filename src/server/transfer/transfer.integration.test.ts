@@ -5,6 +5,7 @@ import { acceptTransferTicket } from "./accept-ticket";
 import { instantTransfer } from "./instant-transfer";
 import { issueTransferTicket } from "./issue-ticket";
 import { cancelTransferTicket } from "./cancel-ticket";
+import { returnEquipment } from "@/server/circulation/return";
 
 async function fixture(mode: "TRANSFER_QR" | "INSTANT_EQUIPMENT_QR") {
   const sender = await prisma.user.create({ data: { employeeNumber: "EMP030", name: "보내는 직원", passwordHash: "test" } });
@@ -62,6 +63,38 @@ describe("equipment transfer", () => {
     const allowed = await fixture("INSTANT_EQUIPMENT_QR");
     const result = await instantTransfer({ publicCode: allowed.device.publicCode, recipientUserId: allowed.recipient.id });
     expect(result.nextAssignment).toMatchObject({ userId: allowed.recipient.id, acquisitionType: "INSTANT_QR" });
+  });
+
+  it("notifies both users and keeps the sender observing until final return", async () => {
+    const data = await fixture("INSTANT_EQUIPMENT_QR");
+
+    await instantTransfer({ publicCode: data.device.publicCode, recipientUserId: data.recipient.id });
+
+    const notifications = await prisma.userNotification.findMany({ orderBy: { userId: "asc" } });
+    expect(notifications).toHaveLength(2);
+    expect(new Set(notifications.map((item) => item.userId))).toEqual(new Set([data.sender.id, data.recipient.id]));
+    expect(await prisma.transferObservation.findFirst({ where: { observerUserId: data.sender.id, resolvedAt: null } }))
+      .toMatchObject({ equipmentId: data.device.id, sourceAssignmentId: data.assignment.id });
+
+    await returnEquipment({ publicCode: data.device.publicCode, actorUserId: data.recipient.id });
+    expect(await prisma.transferObservation.count({ where: { equipmentId: data.device.id, resolvedAt: null } })).toBe(0);
+  });
+
+  it("resolves a returning recipient observation across mixed transfer modes", async () => {
+    const data = await fixture("INSTANT_EQUIPMENT_QR");
+    await prisma.user.update({ where: { id: data.recipient.id }, data: { defaultTransferMode: "TRANSFER_QR" } });
+    await instantTransfer({ publicCode: data.device.publicCode, recipientUserId: data.recipient.id });
+
+    await prisma.user.update({ where: { id: data.sender.id }, data: { defaultTransferMode: "INSTANT_EQUIPMENT_QR" } });
+    const issued = await issueTransferTicket({ equipmentId: data.device.id, actorUserId: data.recipient.id });
+    await acceptTransferTicket({ token: issued.token, recipientUserId: data.sender.id });
+
+    const third = await prisma.user.create({ data: { employeeNumber: "EMP032", name: "세 번째 직원", passwordHash: "test" } });
+    await instantTransfer({ publicCode: data.device.publicCode, recipientUserId: third.id });
+
+    expect(await prisma.transferObservation.count({
+      where: { equipmentId: data.device.id, observerUserId: data.sender.id, resolvedAt: null }
+    })).toBe(1);
   });
 
   it("blocks ticket operations while equipment is out of service", async () => {

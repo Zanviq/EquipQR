@@ -27,15 +27,18 @@ describe("EquipmentActions", () => {
     ["CHECKOUT", "/api/equipment/PUBLIC-1/checkout"],
     ["RETURN", "/api/equipment/PUBLIC-1/return"]
   ] as const)("automatically runs %s once and leaves the equipment page", async (action, endpoint) => {
+    const completedMessage = action === "CHECKOUT" ? "대여가 완료되었습니다." : "반납이 완료되었습니다.";
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ message: "완료했습니다." })
+      json: vi.fn().mockResolvedValue({ message: completedMessage })
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<StrictMode><EquipmentActions publicCode="PUBLIC-1" actions={[action]} scanActionMode="IMMEDIATE" /></StrictMode>);
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/my-equipment"));
+    expect(await screen.findByRole("status")).toHaveTextContent(completedMessage);
+    expect(replace).not.toHaveBeenCalled();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/my-equipment"), { timeout: 2000 });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledWith(endpoint, { method: "POST" });
     expect(refresh).not.toHaveBeenCalled();
@@ -49,6 +52,20 @@ describe("EquipmentActions", () => {
 
     expect(screen.getByRole("button", { name: "대여하기" })).toBeEnabled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the same completion feedback after pressing a circulation button", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ message: "대여가 완료되었습니다." })
+    }));
+    render(<EquipmentActions publicCode="PUBLIC-1" actions={["CHECKOUT"]} scanActionMode="CONFIRM" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "대여하기" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("대여가 완료되었습니다.");
+    expect(refresh).not.toHaveBeenCalled();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/my-equipment"), { timeout: 2000 });
   });
 
   it.each([
@@ -67,13 +84,14 @@ describe("EquipmentActions", () => {
   it("finishes an instant transfer once and leaves before automatic return can run", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ message: "전달을 완료했습니다." })
+      json: vi.fn().mockResolvedValue({ message: "전달이 완료되었습니다." })
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<StrictMode><EquipmentActions publicCode="PUBLIC-1" actions={["INSTANT_TRANSFER"]} scanActionMode="CONFIRM" /></StrictMode>);
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/my-equipment"));
+    expect(await screen.findByRole("status")).toHaveTextContent("전달이 완료되었습니다.");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/my-equipment"), { timeout: 2000 });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(refresh).not.toHaveBeenCalled();
   });

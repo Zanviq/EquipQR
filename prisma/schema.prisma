@@ -75,6 +75,8 @@ model User {
   actedAuditEvents       AuditEvent[] @relation("AuditActor")
   previousAuditEvents    AuditEvent[] @relation("AuditPreviousUser")
   nextAuditEvents        AuditEvent[] @relation("AuditNextUser")
+  notifications          UserNotification[]
+  transferObservations   TransferObservation[]
 
   @@map("users")
 }
@@ -109,6 +111,7 @@ model Equipment {
   assignments Assignment[]
   transferTickets TransferTicket[]
   auditEvents AuditEvent[]
+  transferObservations TransferObservation[]
 
   @@map("equipment")
 }
@@ -126,6 +129,7 @@ model Assignment {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   transferTickets TransferTicket[]
   auditEvents AuditEvent[]
+  sourceTransferObservation TransferObservation?
 
   @@index([userId, endedAt])
   @@index([equipmentId, endedAt])
@@ -173,9 +177,41 @@ model AuditEvent {
   nextUser User? @relation("AuditNextUser", fields: [nextUserId], references: [id], onDelete: Restrict)
   assignment Assignment? @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
   transferTicket TransferTicket? @relation(fields: [transferTicketId], references: [id], onDelete: Restrict)
+  notifications UserNotification[]
 
   @@index([equipmentId, occurredAt])
   @@index([actorUserId, occurredAt])
   @@index([eventType, occurredAt])
   @@map("audit_events")
+}
+
+model UserNotification {
+  userId       String    @db.Uuid @map("user_id")
+  auditEventId String    @db.Uuid @map("audit_event_id")
+  readAt       DateTime? @map("read_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict)
+
+  @@id([userId, auditEventId])
+  @@index([userId, readAt, createdAt])
+  @@map("user_notifications")
+}
+
+model TransferObservation {
+  id                 String    @id @default(uuid()) @db.Uuid
+  observerUserId     String    @db.Uuid @map("observer_user_id")
+  equipmentId        String    @db.Uuid @map("equipment_id")
+  sourceAssignmentId String    @unique @db.Uuid @map("source_assignment_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  resolvedAt         DateTime? @map("resolved_at")
+
+  observerUser     User       @relation(fields: [observerUserId], references: [id], onDelete: Restrict)
+  equipment        Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  sourceAssignment Assignment @relation(fields: [sourceAssignmentId], references: [id], onDelete: Restrict)
+
+  @@index([observerUserId, resolvedAt])
+  @@index([equipmentId, resolvedAt])
+  @@map("transfer_observations")
 }

@@ -8,7 +8,7 @@ export async function POST(request: Request, context: { params: Promise<{ public
     const user = await requireRequestUser(request);
     const { publicCode } = await context.params;
     await instantTransfer({ publicCode, recipientUserId: user.id });
-    return Response.json({ ok: true, message: "장비를 전달받았습니다." });
+    return Response.json({ ok: true, message: "전달이 완료되었습니다." });
   } catch (error) {
     return domainErrorResponse(error);
   }

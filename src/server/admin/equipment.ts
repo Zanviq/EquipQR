@@ -69,6 +69,10 @@ export async function changeResponsibility(input: { adminUserId: string; equipme
     const now = new Date();
     if (active) await tx.assignment.update({ where: { id: active.id }, data: { endedAt: now } });
     await tx.transferTicket.updateMany({ where: { equipmentId: equipment.id, usedAt: null, cancelledAt: null }, data: { cancelledAt: now } });
+    await tx.transferObservation.updateMany({
+      where: { equipmentId: equipment.id, resolvedAt: null },
+      data: { resolvedAt: now }
+    });
     let nextAssignment = null;
     if (input.nextUserId) {
       const next = await tx.user.findUnique({ where: { id: input.nextUserId } });

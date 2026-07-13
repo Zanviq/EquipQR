@@ -13,7 +13,7 @@ export interface CompleteTransferInput {
 export async function completeTransfer(tx: Prisma.TransactionClient, input: CompleteTransferInput) {
   const now = input.now ?? new Date();
   const [active, recipient, equipment] = await Promise.all([
-    tx.assignment.findUnique({ where: { id: input.fromAssignmentId } }),
+    tx.assignment.findUnique({ where: { id: input.fromAssignmentId }, include: { user: { select: { name: true } } } }),
     tx.user.findUnique({ where: { id: input.recipientUserId } }),
     tx.equipment.findUnique({ where: { id: input.equipmentId } })
   ]);
@@ -50,7 +50,7 @@ export async function completeTransfer(tx: Prisma.TransactionClient, input: Comp
     },
     data: { cancelledAt: now }
   });
-  await tx.auditEvent.create({
+  const auditEvent = await tx.auditEvent.create({
     data: {
       eventType: "TRANSFER",
       equipmentId: input.equipmentId,
@@ -61,5 +61,25 @@ export async function completeTransfer(tx: Prisma.TransactionClient, input: Comp
       transferTicketId: input.ticketId
     }
   });
+  await tx.transferObservation.updateMany({
+    where: { equipmentId: input.equipmentId, observerUserId: recipient.id, resolvedAt: null },
+    data: { resolvedAt: now }
+  });
+  if (input.acquisitionType === "INSTANT_QR") {
+    await tx.transferObservation.create({
+      data: {
+        observerUserId: active.userId,
+        equipmentId: input.equipmentId,
+        sourceAssignmentId: active.id,
+        createdAt: now
+      }
+    });
+    await tx.userNotification.createMany({
+      data: [
+        { userId: active.userId, auditEventId: auditEvent.id, createdAt: now },
+        { userId: recipient.id, auditEventId: auditEvent.id, createdAt: now }
+      ]
+    });
+  }
   return { previousAssignment, nextAssignment };
 }

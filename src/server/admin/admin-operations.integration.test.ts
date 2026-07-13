@@ -65,9 +65,17 @@ describe("administrator operations", () => {
     const previous = await prisma.user.create({ data: { employeeNumber: "EMP101", name: "이전", passwordHash: "test" } });
     const next = await prisma.user.create({ data: { employeeNumber: "EMP102", name: "다음", passwordHash: "test" } });
     const device = await createEquipment({ adminUserId: actor.id, assetNumber: "eq-101", name: "카메라" });
-    await prisma.assignment.create({ data: { equipmentId: device.id, userId: previous.id, transferModeSnapshot: "TRANSFER_QR", acquisitionType: "CHECKOUT" } });
+    const previousAssignment = await prisma.assignment.create({ data: { equipmentId: device.id, userId: previous.id, transferModeSnapshot: "TRANSFER_QR", acquisitionType: "CHECKOUT" } });
+    await prisma.transferObservation.create({
+      data: {
+        observerUserId: previous.id,
+        equipmentId: device.id,
+        sourceAssignmentId: previousAssignment.id
+      }
+    });
     await changeResponsibility({ adminUserId: actor.id, equipmentId: device.id, nextUserId: next.id, reason: "팀 이동" });
     expect(await prisma.assignment.findFirst({ where: { equipmentId: device.id, endedAt: null } })).toMatchObject({ userId: next.id, acquisitionType: "ADMIN" });
+    expect(await prisma.transferObservation.count({ where: { equipmentId: device.id, resolvedAt: null } })).toBe(0);
     expect(await prisma.auditEvent.findFirst({ where: { equipmentId: device.id, eventType: "ADMIN_REASSIGN" } }))
       .toMatchObject({ actorUserId: actor.id, reason: "팀 이동", previousUserId: previous.id, nextUserId: next.id });
   });

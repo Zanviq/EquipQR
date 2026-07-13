@@ -15,6 +15,7 @@ export function EquipmentActions({ publicCode, actions, scanActionMode }: { publ
     : undefined;
   const router = useRouter();
   const [message, setMessage] = useState("");
+  const [completion, setCompletion] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(instantTransfer || Boolean(automaticAction));
   const [ticket, setTicket] = useState<{ id: string; qr: string; expiresAt: string } | null>(null);
@@ -22,14 +23,15 @@ export function EquipmentActions({ publicCode, actions, scanActionMode }: { publ
   const mountedRef = useRef(false);
   const automaticRequestRef = useRef<string | null>(null);
 
-  async function post(path: string, refresh = false) {
+  async function post(path: string, options: { refresh?: boolean; complete?: boolean } = {}) {
     setPending(true); setError(""); setMessage("");
     try {
       const response = await fetch(path, { method: "POST" });
       const body = await response.json() as { message?: string; [key: string]: unknown };
       if (!response.ok) { setError(body.message ?? "작업을 완료하지 못했습니다."); return null; }
-      setMessage(body.message ?? "완료했습니다.");
-      if (refresh) router.refresh();
+      if (options.complete) setCompletion(body.message ?? "작업이 완료되었습니다.");
+      else setMessage(body.message ?? "완료했습니다.");
+      if (options.refresh) router.refresh();
       return body;
     } catch {
       setError("작업을 완료하지 못했습니다.");
@@ -56,6 +58,12 @@ export function EquipmentActions({ publicCode, actions, scanActionMode }: { publ
   }, [ticket]);
 
   useEffect(() => {
+    if (!completion) return;
+    const timer = window.setTimeout(() => router.replace("/my-equipment"), 1200);
+    return () => window.clearTimeout(timer);
+  }, [completion, router]);
+
+  useEffect(() => {
     mountedRef.current = true;
     const requestKey = instantTransfer ? `INSTANT_TRANSFER:${publicCode}` : automaticAction ? `${automaticAction}:${publicCode}` : null;
     const requestPath = instantTransfer
@@ -71,7 +79,7 @@ export function EquipmentActions({ publicCode, actions, scanActionMode }: { publ
           const body = await response.json() as { message?: string };
           if (!mountedRef.current || automaticRequestRef.current !== requestKey) return;
           if (!response.ok) setError(body.message ?? "작업을 완료하지 못했습니다.");
-          else router.replace("/my-equipment");
+          else setCompletion(body.message ?? "작업이 완료되었습니다.");
         } catch {
           if (mountedRef.current && automaticRequestRef.current === requestKey) setError("네트워크 연결을 확인하고 다시 스캔해 주세요.");
         } finally {
@@ -81,6 +89,14 @@ export function EquipmentActions({ publicCode, actions, scanActionMode }: { publ
     }
     return () => { mountedRef.current = false; };
   }, [automaticAction, instantTransfer, publicCode, router]);
+
+  if (completion) return (
+    <section className="action-complete" role="status" aria-live="polite">
+      <span className="action-complete-mark" aria-hidden="true">✓</span>
+      <strong>{completion}</strong>
+      <small>내 장비 화면으로 이동합니다.</small>
+    </section>
+  );
 
   if (ticket) return (
     <section className="card stack" style={{ padding: 24, textAlign: "center" }}>
@@ -93,7 +109,7 @@ export function EquipmentActions({ publicCode, actions, scanActionMode }: { publ
       </> : <div className="notice notice-error">전달 QR이 만료되었습니다. 새 QR을 만들어 주세요.</div>}
       {error ? <div className="notice notice-error" role="alert">{error}</div> : null}
       <Button variant="secondary" disabled={pending} onClick={async () => {
-        const body = await post(`/api/transfer-tickets/${ticket.id}/cancel`, true);
+        const body = await post(`/api/transfer-tickets/${ticket.id}/cancel`, { refresh: true });
         if (body) setTicket(null);
       }}>전달 QR 취소</Button>
     </section>
@@ -103,8 +119,8 @@ export function EquipmentActions({ publicCode, actions, scanActionMode }: { publ
     <div className="stack">
       {message ? <div className="notice notice-info" role="status">{message}</div> : null}
       {error ? <div className="notice notice-error" role="alert">{error}</div> : null}
-      {actions.includes("CHECKOUT") ? <Button disabled={pending} onClick={() => post(`/api/equipment/${encodeURIComponent(publicCode)}/checkout`, true)}>대여하기</Button> : null}
-      {actions.includes("RETURN") ? <Button disabled={pending} onClick={() => post(`/api/equipment/${encodeURIComponent(publicCode)}/return`, true)}>반납하기</Button> : null}
+      {actions.includes("CHECKOUT") ? <Button disabled={pending} onClick={() => post(`/api/equipment/${encodeURIComponent(publicCode)}/checkout`, { complete: true })}>대여하기</Button> : null}
+      {actions.includes("RETURN") ? <Button disabled={pending} onClick={() => post(`/api/equipment/${encodeURIComponent(publicCode)}/return`, { complete: true })}>반납하기</Button> : null}
       {actions.includes("CREATE_TRANSFER_TICKET") ? <Button variant="secondary" disabled={pending} onClick={createTicket}>전달 QR 만들기</Button> : null}
       {instantTransfer && pending ? <div className="notice notice-info">장비 책임자를 변경하고 있습니다…</div> : null}
       {automaticAction && pending ? <div className="notice notice-info">{automaticAction === "CHECKOUT" ? "장비를 대여하고 있습니다…" : "장비를 반납하고 있습니다…"}</div> : null}

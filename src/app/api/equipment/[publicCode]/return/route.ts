@@ -8,7 +8,7 @@ export async function POST(request: Request, context: { params: Promise<{ public
     const user = await requireRequestUser(request);
     const { publicCode } = await context.params;
     await returnEquipment({ publicCode, actorUserId: user.id });
-    return Response.json({ ok: true, message: "반납했습니다." });
+    return Response.json({ ok: true, message: "반납이 완료되었습니다." });
   } catch (error) {
     return domainErrorResponse(error);
   }
