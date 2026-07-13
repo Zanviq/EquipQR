@@ -4,12 +4,22 @@ import { normalizeAssetNumber } from "@/server/equipment/asset-number";
 import { DomainError } from "@/server/domain/errors";
 import { requireAdmin } from "./guard";
 import { mapTransactionError } from "@/server/circulation/transaction-error";
+import { runSerializableTransaction } from "@/server/db/serializable-transaction";
 
 export async function updateEquipmentDetails(input: { adminUserId: string; equipmentId: string; name: string; note?: string }) {
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await requireAdmin(tx, input.adminUserId);
-    const equipment = await tx.equipment.update({ where: { id: input.equipmentId }, data: { name: input.name.trim(), note: input.note?.trim() || null } });
-    await tx.auditEvent.create({ data: { eventType: "EQUIPMENT_UPDATED", equipmentId: equipment.id, actorUserId: input.adminUserId } });
+    const before = await tx.equipment.findUnique({ where: { id: input.equipmentId }, select: { name: true, note: true } });
+    if (!before) throw new DomainError("EQUIPMENT_NOT_FOUND", "장비를 찾을 수 없습니다.", 404);
+    const name = input.name.trim();
+    const note = input.note?.trim() || null;
+    const equipment = await tx.equipment.update({ where: { id: input.equipmentId }, data: { name, note } });
+    await tx.auditEvent.create({ data: {
+      eventType: "EQUIPMENT_UPDATED",
+      equipmentId: equipment.id,
+      actorUserId: input.adminUserId,
+      metadata: { before: { name: before.name, note: before.note }, after: { name, note } }
+    } });
     return equipment;
   });
 }
@@ -30,13 +40,21 @@ export async function createEquipment(input: { adminUserId: string; assetNumber:
 
 export async function setEquipmentStatus(input: { adminUserId: string; equipmentId: string; status: "ACTIVE" | "OUT_OF_SERVICE"; reason: string }) {
   if (!input.reason.trim()) throw new DomainError("REASON_REQUIRED", "변경 사유를 입력해 주세요.");
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     await requireAdmin(tx, input.adminUserId);
+    const before = await tx.equipment.findUnique({ where: { id: input.equipmentId }, select: { operationalStatus: true } });
+    if (!before) throw new DomainError("EQUIPMENT_NOT_FOUND", "장비를 찾을 수 없습니다.", 404);
     const equipment = await tx.equipment.update({ where: { id: input.equipmentId }, data: { operationalStatus: input.status } });
     if (input.status === "OUT_OF_SERVICE") {
       await tx.transferTicket.updateMany({ where: { equipmentId: equipment.id, usedAt: null, cancelledAt: null }, data: { cancelledAt: new Date() } });
     }
-    await tx.auditEvent.create({ data: { eventType: "STATUS_CHANGED", equipmentId: equipment.id, actorUserId: input.adminUserId, reason: input.reason.trim(), metadata: { status: input.status } } });
+    await tx.auditEvent.create({ data: {
+      eventType: "STATUS_CHANGED",
+      equipmentId: equipment.id,
+      actorUserId: input.adminUserId,
+      reason: input.reason.trim(),
+      metadata: { before: { status: before.operationalStatus }, after: { status: input.status } }
+    } });
     return equipment;
   });
 }

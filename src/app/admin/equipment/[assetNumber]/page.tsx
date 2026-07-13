@@ -7,10 +7,11 @@ import { prisma } from "@/server/db/client";
 import { getEffectiveStatus } from "@/server/equipment/effective-status";
 import { buildEquipmentQrUrl } from "@/server/equipment/public-code";
 import { encodePathSegment } from "@/lib/admin-paths";
+import { auditEventLabels, describeAuditMetadata } from "@/lib/audit-event";
 
 export default async function AdminEquipmentDetail({ params }: { params: Promise<{ assetNumber: string }> }) {
   const { assetNumber } = await params; const now = new Date();
-  const item = await prisma.equipment.findUnique({ where: { assetNumber: assetNumber.toUpperCase() }, include: { assignments: { where: { endedAt: null }, take: 1, include: { user: true } }, transferTickets: { where: { usedAt: null, cancelledAt: null, expiresAt: { gt: now } }, take: 1 }, auditEvents: { take: 20, orderBy: { occurredAt: "desc" }, include: { actorUser: true, previousUser: true, nextUser: true } } } });
+  const item = await prisma.equipment.findUnique({ where: { assetNumber: assetNumber.toUpperCase() }, include: { assignments: { where: { endedAt: null }, take: 1, include: { user: true } }, transferTickets: { where: { usedAt: null, cancelledAt: null, expiresAt: { gt: now } }, take: 1 }, auditEvents: { take: 20, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], include: { actorUser: true, previousUser: true, nextUser: true } } } });
   if (!item) notFound();
   const assignment = item.assignments[0];
   const status = getEffectiveStatus({ operationalStatus: item.operationalStatus, hasActiveAssignment: !!assignment, hasValidTicket: !!item.transferTickets.length });
@@ -24,6 +25,11 @@ export default async function AdminEquipmentDetail({ params }: { params: Promise
     <div className="stack print-hidden"><div className="card admin-panel stack"><h2 className="section-title">장비 정보</h2><AdminForm endpoint={`/api/admin/equipment/${assetSegment}/details`} method="PATCH" submitLabel="정보 저장"><label className="field"><span>장비명</span><input className="input" name="name" defaultValue={item.name} required /></label><label className="field"><span>비고</span><textarea className="textarea" name="note" defaultValue={item.note ?? ""} /></label></AdminForm></div>
     <div className="card admin-panel stack"><h2 className="section-title">운영 상태</h2><AdminForm endpoint={`/api/admin/equipment/${assetSegment}`} method="PATCH" submitLabel={item.operationalStatus === "ACTIVE" ? "사용 중지" : "사용 재개"} confirmMessage="장비 운영 상태를 변경하시겠습니까?"><input type="hidden" name="status" value={item.operationalStatus === "ACTIVE" ? "OUT_OF_SERVICE" : "ACTIVE"} /><label className="field"><span>변경 사유</span><textarea className="textarea" name="reason" required /></label></AdminForm></div>
     <div className="card admin-panel stack"><h2 className="section-title">책임자 강제 변경</h2><p className="page-copy">현재 책임자: {assignment?.user.name ?? "없음"}</p><AdminForm endpoint={`/api/admin/equipment/${assetSegment}/reassign`} submitLabel="책임자 변경" confirmMessage="감사 기록을 남기고 책임자를 변경하시겠습니까?" nullFields={["nextEmployeeNumber"]}><label className="field"><span>새 책임자 사번 (비우면 회수)</span><input className="input" name="nextEmployeeNumber" /></label><label className="field"><span>변경 사유</span><textarea className="textarea" name="reason" required /></label></AdminForm></div></div></section>
-    <section className="stack print-hidden"><h2 className="section-title">최근 변경 기록</h2><div className="card timeline">{item.auditEvents.map(event => <article key={event.id}><span className="timeline-dot"/><div><strong>{event.eventType}</strong><p>{event.previousUser?.name ?? "없음"} → {event.nextUser?.name ?? "없음"}{event.reason ? ` · ${event.reason}` : ""}</p></div><time>{event.occurredAt.toLocaleString("ko-KR")}</time></article>)}</div></section>
+    <section className="stack print-hidden"><h2 className="section-title">최근 변경 기록</h2><div className="card timeline">{item.auditEvents.length ? item.auditEvents.map(event => {
+      const metadata = describeAuditMetadata(event.eventType, event.metadata);
+      const responsibility = event.previousUser || event.nextUser ? `${event.previousUser?.name ?? "없음"} → ${event.nextUser?.name ?? "없음"}` : null;
+      const details = [...metadata, responsibility, event.reason ? `사유: ${event.reason}` : null, `처리자: ${event.actorUser?.name ?? "시스템"}`].filter((value): value is string => Boolean(value));
+      return <article key={event.id}><span className="timeline-dot"/><div><strong>{auditEventLabels[event.eventType] ?? event.eventType}</strong><p>{details.join(" · ")}</p></div><time>{event.occurredAt.toLocaleString("ko-KR")}</time></article>;
+    }) : <div className="empty-state">아직 변경 기록이 없습니다.</div>}</div></section>
   </main>;
 }

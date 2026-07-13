@@ -29,6 +29,13 @@ function hasOnlyNonFunctionDirectProps(element: ReactElement) {
   return Object.values(element.props as Record<string, unknown>).every((value) => typeof value !== "function");
 }
 
+function textContent(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textContent).join("");
+  if (!isValidElement(node)) return "";
+  return textContent((node.props as { children?: ReactNode }).children);
+}
+
 describe("admin detail pages", () => {
   beforeEach(() => {
     equipmentFindUnique.mockResolvedValue({
@@ -85,6 +92,49 @@ describe("admin detail pages", () => {
       "/api/admin/equipment/EQ%2FLEGACY%20%231",
       "/api/admin/equipment/EQ%2FLEGACY%20%231/reassign"
     ]);
+  });
+
+  it("renders localized equipment audit labels and before/after metadata", async () => {
+    equipmentFindUnique.mockResolvedValueOnce({
+      id: "equipment-audit",
+      assetNumber: "EQ-0012",
+      name: "새 노트북",
+      note: "새 비고",
+      publicCode: "public-code",
+      operationalStatus: "OUT_OF_SERVICE",
+      assignments: [],
+      transferTickets: [],
+      auditEvents: [{
+        id: "audit-1",
+        eventType: "EQUIPMENT_UPDATED",
+        previousUser: null,
+        nextUser: null,
+        actorUser: { name: "관리자" },
+        reason: null,
+        metadata: {
+          before: { name: "기존 노트북", note: "기존 비고" },
+          after: { name: "새 노트북", note: "새 비고" }
+        },
+        occurredAt: new Date("2026-07-13T00:00:00.000Z")
+      }]
+    });
+    const { default: AdminEquipmentDetail } = await import("./equipment/[assetNumber]/page");
+
+    const tree = await AdminEquipmentDetail({ params: Promise.resolve({ assetNumber: "EQ-0012" }) });
+    const rendered = textContent(tree);
+
+    expect(rendered).toContain("장비 수정");
+    expect(rendered).toContain("장비명: 기존 노트북 → 새 노트북");
+    expect(rendered).toContain("비고: 기존 비고 → 새 비고");
+    expect(rendered).not.toContain("EQUIPMENT_UPDATED");
+  });
+
+  it("shows an empty state when equipment has no recent audit events", async () => {
+    const { default: AdminEquipmentDetail } = await import("./equipment/[assetNumber]/page");
+
+    const tree = await AdminEquipmentDetail({ params: Promise.resolve({ assetNumber: "EQ-0012" }) });
+
+    expect(textContent(tree)).toContain("아직 변경 기록이 없습니다.");
   });
 
   it("uses only serializable AdminForm props on user detail", async () => {
