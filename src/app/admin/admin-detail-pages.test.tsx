@@ -1,0 +1,75 @@
+import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AdminForm } from "@/components/admin/admin-form";
+
+const equipmentFindUnique = vi.fn();
+const userFindUnique = vi.fn();
+
+vi.mock("@/server/db/client", () => ({
+  prisma: {
+    equipment: { findUnique: equipmentFindUnique },
+    user: { findUnique: userFindUnique }
+  }
+}));
+
+vi.mock("qrcode", () => ({
+  default: { toDataURL: vi.fn().mockResolvedValue("data:image/png;base64,qr") }
+}));
+
+vi.mock("next/navigation", () => ({ notFound: vi.fn() }));
+
+function findElements(node: ReactNode, predicate: (element: ReactElement) => boolean): ReactElement[] {
+  if (Array.isArray(node)) return node.flatMap((child) => findElements(child, predicate));
+  if (!isValidElement(node)) return [];
+  const matches = predicate(node) ? [node] : [];
+  return matches.concat(findElements((node.props as { children?: ReactNode }).children, predicate));
+}
+
+function hasOnlyNonFunctionDirectProps(element: ReactElement) {
+  return Object.values(element.props as Record<string, unknown>).every((value) => typeof value !== "function");
+}
+
+describe("admin detail pages", () => {
+  beforeEach(() => {
+    equipmentFindUnique.mockResolvedValue({
+      id: "equipment-1",
+      assetNumber: "EQ-0012",
+      name: "업무용 노트북",
+      note: null,
+      publicCode: "public-code",
+      operationalStatus: "ACTIVE",
+      assignments: [],
+      transferTickets: [],
+      auditEvents: []
+    });
+    userFindUnique.mockResolvedValue({
+      id: "user-1",
+      employeeNumber: "EMP-001",
+      name: "관리자",
+      role: "ADMIN",
+      status: "ACTIVE",
+      assignments: []
+    });
+  });
+
+  it("uses only serializable AdminForm props on equipment detail", async () => {
+    const { default: AdminEquipmentDetail } = await import("./equipment/[assetNumber]/page");
+    const tree = await AdminEquipmentDetail({ params: Promise.resolve({ assetNumber: "EQ-0012" }) });
+    const forms = findElements(tree, (element) => element.type === AdminForm);
+
+    expect(forms).toHaveLength(3);
+    expect(forms.every(hasOnlyNonFunctionDirectProps)).toBe(true);
+    expect(findElements(forms[1], (element) => element.type === "input" && (element.props as { name?: string }).name === "status")).toHaveLength(1);
+    expect((forms[2].props as { nullFields?: string[] }).nullFields).toEqual(["nextEmployeeNumber"]);
+  });
+
+  it("uses only serializable AdminForm props on user detail", async () => {
+    const { default: AdminUserPage } = await import("./users/[employeeNumber]/page");
+    const tree = await AdminUserPage({ params: Promise.resolve({ employeeNumber: "EMP-001" }) });
+    const forms = findElements(tree, (element) => element.type === AdminForm);
+
+    expect(forms).toHaveLength(2);
+    expect(forms.every(hasOnlyNonFunctionDirectProps)).toBe(true);
+    expect(findElements(forms[0], (element) => element.type === "input" && (element.props as { name?: string }).name === "status")).toHaveLength(1);
+  });
+});
