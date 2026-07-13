@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createRateLimiter, enforceRateLimit, resetRateLimitsForTest } from "./rate-limit";
+import {
+  createRateLimiter,
+  enforceRateLimit,
+  LOGIN_RATE_LIMIT_MAX_ENTRIES,
+  reserveLoginRateLimitAttempt,
+  resetRateLimitsForTest
+} from "./rate-limit";
 
 describe("rate limiter", () => {
   beforeEach(resetRateLimitsForTest);
@@ -67,5 +73,33 @@ describe("rate limiter", () => {
     limiter.clear("login:EMP001:ip");
 
     expect(() => limiter.enforce({ key: "login:EMP001:ip", limit: 1, windowMs: 1000, now: 1 })).not.toThrow();
+  });
+
+  it("does not let a saturated login namespace block application limiter keys", () => {
+    for (let index = 0; index < LOGIN_RATE_LIMIT_MAX_ENTRIES; index += 1) {
+      reserveLoginRateLimitAttempt({ key: `login-flood:${index}`, limit: 1, windowMs: 1000, now: 0 });
+    }
+
+    expect(() => reserveLoginRateLimitAttempt({ key: "login-flood:overflow", limit: 1, windowMs: 1000, now: 1 }))
+      .toThrowError(expect.objectContaining({ code: "RATE_LIMITED" }));
+    expect(() => enforceRateLimit({ key: "resolve:user:ip", limit: 1, windowMs: 1000, now: 1 })).not.toThrow();
+  });
+
+  it("does not repeat a full sweep before the earliest expiry", () => {
+    const limiter = createRateLimiter({ maxEntries: 2 });
+    limiter.reserveAttempt({ key: "first", limit: 1, windowMs: 1000, now: 0 });
+    limiter.reserveAttempt({ key: "second", limit: 1, windowMs: 2000, now: 0 });
+
+    expect(() => limiter.reserveAttempt({ key: "overflow-0", limit: 1, windowMs: 1000, now: 1 }))
+      .toThrowError(expect.objectContaining({ code: "RATE_LIMITED" }));
+    const sweeps = limiter.fullSweepCountForTest();
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      expect(() => limiter.reserveAttempt({ key: `overflow-${attempt}`, limit: 1, windowMs: 1000, now: attempt + 1 }))
+        .toThrowError(expect.objectContaining({ code: "RATE_LIMITED" }));
+    }
+
+    expect(limiter.fullSweepCountForTest()).toBe(sweeps);
+    expect(() => limiter.reserveAttempt({ key: "after-expiry", limit: 1, windowMs: 1000, now: 1000 })).not.toThrow();
+    expect(limiter.fullSweepCountForTest()).toBe(sweeps + 1);
   });
 });

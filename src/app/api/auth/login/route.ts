@@ -5,9 +5,9 @@ import { normalizeEmployeeNumber } from "@/server/auth/employee-number";
 import { verifyPassword } from "@/server/auth/password";
 import { createAuthenticatedSession, SESSION_COOKIE } from "@/server/auth/session";
 import {
-  clearRateLimit,
+  clearLoginRateLimit,
   requestIp,
-  reserveRateLimitAttempt
+  reserveLoginRateLimitAttempt
 } from "@/server/http/rate-limit";
 import { domainErrorResponse } from "@/server/http/response";
 
@@ -34,9 +34,10 @@ export async function POST(request: Request) {
     return invalid();
   }
 
-  const rateLimitKey = `login:${employeeNumber}:${ip}`;
-  const rateLimit = { key: rateLimitKey, limit: 10, windowMs: 15 * 60 * 1000 };
-  reserveRateLimitAttempt(rateLimit);
+  const ipRateLimitKey = `login:ip:${ip}`;
+  const accountRateLimitKey = `login:${employeeNumber}:${ip}`;
+  reserveLoginRateLimitAttempt({ key: ipRateLimitKey, limit: 200, windowMs: 15 * 60 * 1000 });
+  reserveLoginRateLimitAttempt({ key: accountRateLimitKey, limit: 10, windowMs: 15 * 60 * 1000 });
   const user = await prisma.user.findUnique({ where: { employeeNumber } });
   if (!user || user.status !== "ACTIVE" || !(await verifyPassword(user.passwordHash, parsed.data.password))) {
     return invalid();
@@ -50,7 +51,8 @@ export async function POST(request: Request) {
   if (!session) {
     return invalid();
   }
-  clearRateLimit(rateLimitKey);
+  clearLoginRateLimit(ipRateLimitKey);
+  clearLoginRateLimit(accountRateLimitKey);
   const response = NextResponse.json({ user: { name: user.name, role: user.role } });
   response.cookies.set(SESSION_COOKIE, session.token, {
     httpOnly: true,

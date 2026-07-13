@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { prisma } from "@/server/db/client";
 import { resetDatabase } from "@/test/reset-database";
 import * as passwordService from "@/server/auth/password";
-import { resetRateLimitsForTest } from "@/server/http/rate-limit";
+import { loginRateLimitSizeForTest, resetRateLimitsForTest } from "@/server/http/rate-limit";
 import { POST } from "./route";
 
 function request(body: unknown, ip = "203.0.113.10") {
@@ -72,6 +72,7 @@ describe("POST /api/auth/login", () => {
     }
 
     expect((await POST(request({ employeeNumber: "EMP001", password }))).status).toBe(200);
+    expect(loginRateLimitSizeForTest()).toBe(0);
     expect((await POST(request({ employeeNumber: "emp001", password: "wrong" }))).status).toBe(401);
   });
 
@@ -148,5 +149,27 @@ describe("POST /api/auth/login", () => {
     expect(statuses.filter((status) => status === 429)).toHaveLength(1);
     expect(verifyPassword).toHaveBeenCalledTimes(10);
     expect(await prisma.session.count({ where: { userId: user.id } })).toBe(10);
+  });
+
+  it("admits at most two hundred account reservations from one IP", async () => {
+    const passwordHash = await passwordService.hashPassword("stored password value");
+    await prisma.user.createMany({
+      data: Array.from({ length: 201 }, (_, index) => ({
+        employeeNumber: `EMP-IP-${index}`,
+        name: `직원 ${index}`,
+        passwordHash
+      }))
+    });
+    const verifyPassword = vi.spyOn(passwordService, "verifyPassword").mockResolvedValue(false);
+
+    const responses = await Promise.all(Array.from({ length: 201 }, (_, index) => (
+      POST(request({ employeeNumber: `EMP-IP-${index}`, password: "wrong" }, "198.51.100.20"))
+    )));
+    const statuses = responses.map((response) => response.status);
+
+    expect(statuses.filter((status) => status === 401)).toHaveLength(200);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(1);
+    expect(verifyPassword).toHaveBeenCalledTimes(200);
+    expect(loginRateLimitSizeForTest()).toBe(201);
   });
 });
