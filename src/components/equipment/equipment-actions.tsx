@@ -3,20 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
+import type { ScanActionMode } from "@/generated/prisma/enums";
 import { Button } from "@/components/ui/button";
 
 type Action = "CHECKOUT" | "RETURN" | "CREATE_TRANSFER_TICKET" | "INSTANT_TRANSFER";
 
-export function EquipmentActions({ publicCode, actions }: { publicCode: string; actions: Action[] }) {
+export function EquipmentActions({ publicCode, actions, scanActionMode }: { publicCode: string; actions: Action[]; scanActionMode: ScanActionMode }) {
   const instantTransfer = actions.includes("INSTANT_TRANSFER");
+  const automaticAction = scanActionMode === "IMMEDIATE"
+    ? actions.find((action): action is "CHECKOUT" | "RETURN" => action === "CHECKOUT" || action === "RETURN")
+    : undefined;
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(instantTransfer);
+  const [pending, setPending] = useState(instantTransfer || Boolean(automaticAction));
   const [ticket, setTicket] = useState<{ id: string; qr: string; expiresAt: string } | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const mountedRef = useRef(false);
-  const instantRequestRef = useRef<string | null>(null);
+  const automaticRequestRef = useRef<string | null>(null);
 
   async function post(path: string, refresh = false) {
     setPending(true); setError(""); setMessage("");
@@ -53,24 +57,31 @@ export function EquipmentActions({ publicCode, actions }: { publicCode: string; 
 
   useEffect(() => {
     mountedRef.current = true;
-    if (instantTransfer && instantRequestRef.current !== publicCode) {
-      instantRequestRef.current = publicCode;
+    const requestKey = instantTransfer ? `INSTANT_TRANSFER:${publicCode}` : automaticAction ? `${automaticAction}:${publicCode}` : null;
+    const requestPath = instantTransfer
+      ? `/api/equipment/${encodeURIComponent(publicCode)}/instant-transfer`
+      : automaticAction
+        ? `/api/equipment/${encodeURIComponent(publicCode)}/${automaticAction === "CHECKOUT" ? "checkout" : "return"}`
+        : null;
+    if (requestKey && requestPath && automaticRequestRef.current !== requestKey) {
+      automaticRequestRef.current = requestKey;
       void (async () => {
         try {
-          const response = await fetch(`/api/equipment/${encodeURIComponent(publicCode)}/instant-transfer`, { method: "POST" });
+          const response = await fetch(requestPath, { method: "POST" });
           const body = await response.json() as { message?: string };
-          if (!mountedRef.current || instantRequestRef.current !== publicCode) return;
+          if (!mountedRef.current || automaticRequestRef.current !== requestKey) return;
           if (!response.ok) setError(body.message ?? "작업을 완료하지 못했습니다.");
-          else { setMessage(body.message ?? "전달을 완료했습니다."); router.refresh(); }
+          else if (instantTransfer) { setMessage(body.message ?? "전달을 완료했습니다."); router.refresh(); }
+          else router.replace("/my-equipment");
         } catch {
-          if (mountedRef.current && instantRequestRef.current === publicCode) setError("네트워크 연결을 확인하고 다시 스캔해 주세요.");
+          if (mountedRef.current && automaticRequestRef.current === requestKey) setError("네트워크 연결을 확인하고 다시 스캔해 주세요.");
         } finally {
-          if (mountedRef.current && instantRequestRef.current === publicCode) setPending(false);
+          if (mountedRef.current && automaticRequestRef.current === requestKey) setPending(false);
         }
       })();
     }
     return () => { mountedRef.current = false; };
-  }, [instantTransfer, publicCode, router]);
+  }, [automaticAction, instantTransfer, publicCode, router]);
 
   if (ticket) return (
     <section className="card stack" style={{ padding: 24, textAlign: "center" }}>
@@ -93,10 +104,11 @@ export function EquipmentActions({ publicCode, actions }: { publicCode: string; 
     <div className="stack">
       {message ? <div className="notice notice-info" role="status">{message}</div> : null}
       {error ? <div className="notice notice-error" role="alert">{error}</div> : null}
-      {actions.includes("CHECKOUT") ? <Button disabled={pending} onClick={() => post(`/api/equipment/${publicCode}/checkout`, true)}>대여하기</Button> : null}
-      {actions.includes("RETURN") ? <Button disabled={pending} onClick={() => post(`/api/equipment/${publicCode}/return`, true)}>반납하기</Button> : null}
+      {actions.includes("CHECKOUT") ? <Button disabled={pending} onClick={() => post(`/api/equipment/${encodeURIComponent(publicCode)}/checkout`, true)}>대여하기</Button> : null}
+      {actions.includes("RETURN") ? <Button disabled={pending} onClick={() => post(`/api/equipment/${encodeURIComponent(publicCode)}/return`, true)}>반납하기</Button> : null}
       {actions.includes("CREATE_TRANSFER_TICKET") ? <Button variant="secondary" disabled={pending} onClick={createTicket}>전달 QR 만들기</Button> : null}
       {instantTransfer && pending ? <div className="notice notice-info">장비 책임자를 변경하고 있습니다…</div> : null}
+      {automaticAction && pending ? <div className="notice notice-info">{automaticAction === "CHECKOUT" ? "장비를 대여하고 있습니다…" : "장비를 반납하고 있습니다…"}</div> : null}
     </div>
   );
 }

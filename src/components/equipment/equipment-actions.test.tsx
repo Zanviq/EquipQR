@@ -5,9 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EquipmentActions } from "./equipment-actions";
 
 const refresh = vi.fn();
+const replace = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh })
+  useRouter: () => ({ refresh, replace })
 }));
 
 vi.mock("qrcode", () => ({
@@ -19,6 +20,35 @@ describe("EquipmentActions", () => {
     cleanup();
     vi.unstubAllGlobals();
     refresh.mockReset();
+    replace.mockReset();
+  });
+
+  it.each([
+    ["CHECKOUT", "/api/equipment/PUBLIC-1/checkout"],
+    ["RETURN", "/api/equipment/PUBLIC-1/return"]
+  ] as const)("automatically runs %s once and leaves the equipment page", async (action, endpoint) => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ message: "완료했습니다." })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<StrictMode><EquipmentActions publicCode="PUBLIC-1" actions={[action]} scanActionMode="IMMEDIATE" /></StrictMode>);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/my-equipment"));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(endpoint, { method: "POST" });
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("keeps the checkout button in confirmation mode", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EquipmentActions publicCode="PUBLIC-1" actions={["CHECKOUT"]} scanActionMode="CONFIRM" />);
+
+    expect(screen.getByRole("button", { name: "대여하기" })).toBeEnabled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -26,7 +56,7 @@ describe("EquipmentActions", () => {
     ["non-JSON response", () => Promise.resolve({ ok: true, json: () => Promise.reject(new SyntaxError("html")) })]
   ])("releases pending and shows an error after a %s", async (_label, response) => {
     vi.stubGlobal("fetch", vi.fn(response));
-    render(<EquipmentActions publicCode="PUBLIC-1" actions={["CHECKOUT"]} />);
+    render(<EquipmentActions publicCode="PUBLIC-1" actions={["CHECKOUT"]} scanActionMode="CONFIRM" />);
 
     fireEvent.click(screen.getByRole("button", { name: "대여하기" }));
 
@@ -41,7 +71,7 @@ describe("EquipmentActions", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<StrictMode><EquipmentActions publicCode="PUBLIC-1" actions={["INSTANT_TRANSFER"]} /></StrictMode>);
+    render(<StrictMode><EquipmentActions publicCode="PUBLIC-1" actions={["INSTANT_TRANSFER"]} scanActionMode="CONFIRM" /></StrictMode>);
 
     expect(await screen.findByText("전달을 완료했습니다.")).toBeVisible();
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -58,7 +88,7 @@ describe("EquipmentActions", () => {
         json: vi.fn().mockResolvedValue({ message: "전달 QR을 취소하지 못했습니다." })
       });
     vi.stubGlobal("fetch", fetchMock);
-    render(<EquipmentActions publicCode="PUBLIC-1" actions={["CREATE_TRANSFER_TICKET"]} />);
+    render(<EquipmentActions publicCode="PUBLIC-1" actions={["CREATE_TRANSFER_TICKET"]} scanActionMode="CONFIRM" />);
 
     fireEvent.click(screen.getByRole("button", { name: "전달 QR 만들기" }));
     expect(await screen.findByRole("img", { name: /장비 전달 QR/ })).toBeVisible();

@@ -22,6 +22,11 @@ enum TransferMode {
   INSTANT_EQUIPMENT_QR
 }
 
+enum ScanActionMode {
+  IMMEDIATE
+  CONFIRM
+}
+
 enum OperationalStatus {
   ACTIVE
   OUT_OF_SERVICE
@@ -58,6 +63,7 @@ model User {
   role                UserRole     @default(EMPLOYEE)
   status              UserStatus   @default(ACTIVE)
   defaultTransferMode TransferMode @default(TRANSFER_QR) @map("default_transfer_mode")
+  scanActionMode      ScanActionMode @default(IMMEDIATE) @map("scan_action_mode")
   passwordChangedAt   DateTime     @default(now()) @map("password_changed_at")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")

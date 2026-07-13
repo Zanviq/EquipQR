@@ -21,7 +21,7 @@ export default async function EquipmentScanPage({ params }: { params: Promise<{ 
     <main className="page-wrap stack" style={{ gap: 24 }}>
       <header><div className="eyebrow">Equipment found</div><h1 className="page-title">장비 상태를 확인하세요.</h1></header>
       <EquipmentPassport name={result.equipment.name} assetNumber={result.equipment.assetNumber} status={result.status} meta={meta} />
-      {result.allowedActions.length ? <EquipmentActions publicCode={publicCode} actions={result.allowedActions} /> : <div className="notice notice-error">현재 사용자가 전달 QR을 만들어야 인수할 수 있습니다.</div>}
+      {result.allowedActions.length ? <EquipmentActions publicCode={publicCode} actions={result.allowedActions} scanActionMode={user.scanActionMode} /> : <div className="notice notice-error">현재 사용자가 전달 QR을 만들어야 인수할 수 있습니다.</div>}
     </main>
   );
 }
