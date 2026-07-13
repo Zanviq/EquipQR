@@ -19,3 +19,6 @@ src/generated/prisma/
 *.tsbuildinfo
 .codex/
 docs/
+backups/
+*.sql.gz
+*.sql.gz.sha256

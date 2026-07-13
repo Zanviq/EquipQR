@@ -34,15 +34,14 @@ npm run dev
 
 1. Cloudflare Zero Trust에서 Tunnel과 public hostname을 만들고 서비스 주소를 `http://web:3000`으로 지정합니다.
 2. 서버에 저장소를 내려받고 `.env`를 생성합니다. `POSTGRES_PASSWORD`, 내부 호스트를 `db`로 지정한 `DATABASE_URL`, `CLOUDFLARE_TUNNEL_TOKEN`, `APP_ORIGIN=https://실제-호스트명`을 반드시 설정합니다.
-3. 외부에 포트를 공개하지 않은 채 실행합니다.
+3. 외부에 포트를 공개하지 않은 채 DB와 마이그레이션을 먼저 실행합니다.
 
 ```bash
-docker compose -f compose.production.yaml up -d --build
-docker compose -f compose.production.yaml ps
-docker compose -f compose.production.yaml logs -f web tunnel
+docker compose -f compose.production.yaml up -d db
+docker compose -f compose.production.yaml run --rm --build migrate
 ```
 
-최초 관리자는 일회성 컨테이너로 생성합니다.
+최초 관리자는 Tunnel을 열기 전에 일회성 컨테이너로 생성합니다. `/api/health/ready`는 DB와 활성 관리자 존재를 모두 확인하므로, 이 단계 전에는 `503`이 정상입니다.
 
 ```bash
 docker compose -f compose.production.yaml run --rm \
@@ -51,13 +50,35 @@ docker compose -f compose.production.yaml run --rm \
   --employee-number ADMIN001 --name 관리자
 ```
 
-> 운영 비밀번호와 Tunnel 토큰은 저장소에 커밋하지 말고 서버의 권한 제한된 `.env` 또는 별도 secret store에 둡니다.
+관리자를 만든 뒤 전체 스택을 실행하고 준비 상태를 확인합니다.
+
+```bash
+docker compose -f compose.production.yaml up -d --build
+docker compose -f compose.production.yaml ps
+docker compose -f compose.production.yaml exec -T web \
+  node -e "fetch('http://127.0.0.1:3000/api/health/ready').then(async r=>{console.log(r.status, await r.text());if(!r.ok)process.exit(1)})"
+docker compose -f compose.production.yaml logs -f web tunnel
+```
+
+`/api/health/live`는 웹 프로세스 생존만 확인하고, `/api/health/ready`는 DB 연결과 활성 관리자 존재를 확인합니다. 운영 healthcheck와 Tunnel은 `ready`가 `200`일 때만 트래픽을 엽니다.
 
 ## 백업과 복구
 
+기본 백업 위치는 저장소 밖의 `/var/backups/equipqr`입니다. 최초 한 번 운영 계정만 접근할 수 있도록 준비합니다.
+
 ```bash
-bash scripts/backup-db.sh /secure-backups/equipqr
-bash scripts/restore-db.sh /secure-backups/equipqr/equipqr-YYYYMMDDTHHMMSSZ.sql.gz
+sudo install -d -m 700 -o "$USER" -g "$(id -gn)" /var/backups/equipqr
+bash scripts/backup-db.sh
 ```
 
-백업 파일은 서버 밖의 암호화 저장소로 복제하고 정기적으로 복구 리허설을 수행합니다. 배포 전에는 `npm run check`와 `docker compose -f compose.production.yaml config`를 실행합니다.
+백업은 임시 파일에 생성되고 gzip 검증 후 원자적으로 게시되며, `.sha256` checksum이 함께 생성됩니다. 디렉터리는 `700`, 파일은 `600`으로 강제됩니다. 다른 위치는 첫 번째 인자 또는 `EQUIPQR_BACKUP_DIR`로 지정할 수 있습니다.
+
+복구는 checksum이 있으면 검증하고, 웹과 Tunnel을 중지한 뒤 현재 DB의 pre-restore 백업을 먼저 생성합니다. 화면에 표시되는 `RESTORE 파일명`을 정확히 입력해야 진행되며, SQL은 단일 transaction으로 적용됩니다. 이후 현재 코드의 migration, readiness 점검, 서비스 재시작까지 수행합니다.
+
+```bash
+bash scripts/restore-db.sh /var/backups/equipqr/equipqr-YYYYMMDDTHHMMSSZ.sql.gz
+```
+
+백업 파일과 `.sha256`은 서버 밖의 암호화 저장소로 복제하고 정기적으로 복구 리허설을 수행합니다. 백업 성공은 파일 존재만이 아니라 checksum 검증과 복구 후 `/api/health/ready`로 판정합니다.
+
+> `docker compose down -v`, `docker volume rm`, `docker volume prune`, `docker system prune --volumes`는 DB 볼륨을 삭제할 수 있습니다. 데이터 폐기와 검증된 백업이 명시적으로 승인된 경우 외에는 실행하지 마세요. 일반적인 `up -d --build`, `restart`, `down`(단, `-v` 없음)은 named volume을 보존합니다.
