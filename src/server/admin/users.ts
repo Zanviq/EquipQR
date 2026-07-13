@@ -2,6 +2,7 @@ import { prisma } from "@/server/db/client";
 import { normalizeEmployeeNumber } from "@/server/auth/employee-number";
 import { hashPassword } from "@/server/auth/password";
 import { DomainError } from "@/server/domain/errors";
+import { runSerializableTransaction } from "@/server/db/serializable-transaction";
 import { requireAdmin } from "./guard";
 
 export async function createUser(input: { adminUserId: string; employeeNumber: string; name: string; password: string; role?: "EMPLOYEE" | "ADMIN" }) {
@@ -21,7 +22,7 @@ export async function createUser(input: { adminUserId: string; employeeNumber: s
 }
 
 export async function setUserStatus(input: { adminUserId: string; userId: string; status: "ACTIVE" | "INACTIVE" }) {
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const admin = await requireAdmin(tx, input.adminUserId);
     if (input.status === "INACTIVE" && admin.id === input.userId) throw new DomainError("SELF_DEACTIVATION", "자신의 관리자 계정은 비활성화할 수 없습니다.", 409);
     const target = await tx.user.findUnique({ where: { id: input.userId } });

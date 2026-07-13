@@ -3,8 +3,12 @@ import { z } from "zod";
 import { prisma } from "@/server/db/client";
 import { normalizeEmployeeNumber } from "@/server/auth/employee-number";
 import { verifyPassword } from "@/server/auth/password";
-import { createSession, SESSION_COOKIE } from "@/server/auth/session";
-import { enforceRateLimit, requestIp } from "@/server/http/rate-limit";
+import { createAuthenticatedSession, SESSION_COOKIE } from "@/server/auth/session";
+import {
+  clearRateLimit,
+  requestIp,
+  reserveRateLimitAttempt
+} from "@/server/http/rate-limit";
 import { domainErrorResponse } from "@/server/http/response";
 
 const inputSchema = z.object({
@@ -20,7 +24,6 @@ const invalid = () => NextResponse.json(
 export async function POST(request: Request) {
   try {
   const ip = requestIp(request);
-  enforceRateLimit({ key: `login:ip:${ip}`, limit: 10, windowMs: 15 * 60 * 1000 });
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return invalid();
 
@@ -31,11 +34,23 @@ export async function POST(request: Request) {
     return invalid();
   }
 
+  const rateLimitKey = `login:${employeeNumber}:${ip}`;
+  const rateLimit = { key: rateLimitKey, limit: 10, windowMs: 15 * 60 * 1000 };
+  reserveRateLimitAttempt(rateLimit);
   const user = await prisma.user.findUnique({ where: { employeeNumber } });
-  if (!user || user.status !== "ACTIVE") return invalid();
-  if (!(await verifyPassword(user.passwordHash, parsed.data.password))) return invalid();
+  if (!user || user.status !== "ACTIVE" || !(await verifyPassword(user.passwordHash, parsed.data.password))) {
+    return invalid();
+  }
 
-  const session = await createSession(user.id, ip);
+  const session = await createAuthenticatedSession({
+    userId: user.id,
+    passwordChangedAt: user.passwordChangedAt,
+    createdIp: ip
+  });
+  if (!session) {
+    return invalid();
+  }
+  clearRateLimit(rateLimitKey);
   const response = NextResponse.json({ user: { name: user.name, role: user.role } });
   response.cookies.set(SESSION_COOKIE, session.token, {
     httpOnly: true,
