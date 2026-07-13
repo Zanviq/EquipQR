@@ -2,10 +2,11 @@ import { z } from "zod";
 import { requireRequestUser } from "@/server/auth/current-user";
 import { createUser } from "@/server/admin/users";
 import { assertSameOrigin, domainErrorResponse } from "@/server/http/response";
+import { employeeNumberSchema, requiredNameSchema } from "@/server/http/schemas";
 
 const schema = z.object({
-  employeeNumber: z.string().min(1).max(64),
-  name: z.string().min(1).max(100),
+  employeeNumber: employeeNumberSchema,
+  name: requiredNameSchema(100),
   password: z.string().min(12).max(256),
   role: z.enum(["EMPLOYEE", "ADMIN"]).default("EMPLOYEE")
 });

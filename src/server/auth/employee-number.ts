@@ -1,5 +1,7 @@
+import { isStrictEmployeeNumber, uppercaseAscii } from "@/server/http/schemas";
+
 export function normalizeEmployeeNumber(value: string) {
-  const normalized = value.trim().toUpperCase();
-  if (!normalized) throw new Error("INVALID_EMPLOYEE_NUMBER");
-  return normalized;
+  const trimmed = value.trim();
+  if (!isStrictEmployeeNumber(trimmed)) throw new Error("INVALID_EMPLOYEE_NUMBER");
+  return uppercaseAscii(trimmed);
 }

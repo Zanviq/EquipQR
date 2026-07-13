@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db/client";
 import { createPublicCode } from "@/server/equipment/public-code";
+import { normalizeAssetNumber } from "@/server/equipment/asset-number";
 import { DomainError } from "@/server/domain/errors";
 import { requireAdmin } from "./guard";
 import { mapTransactionError } from "@/server/circulation/transaction-error";
@@ -17,7 +18,7 @@ export async function createEquipment(input: { adminUserId: string; assetNumber:
   return prisma.$transaction(async (tx) => {
     await requireAdmin(tx, input.adminUserId);
     const equipment = await tx.equipment.create({ data: {
-      assetNumber: input.assetNumber.trim().toUpperCase(),
+      assetNumber: normalizeAssetNumber(input.assetNumber),
       name: input.name.trim(),
       note: input.note?.trim() || null,
       publicCode: createPublicCode()

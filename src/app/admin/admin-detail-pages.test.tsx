@@ -63,6 +63,30 @@ describe("admin detail pages", () => {
     expect((forms[2].props as { nullFields?: string[] }).nullFields).toEqual(["nextEmployeeNumber"]);
   });
 
+  it("encodes the asset number in equipment API endpoints", async () => {
+    equipmentFindUnique.mockResolvedValueOnce({
+      id: "equipment-legacy",
+      assetNumber: "EQ/LEGACY #1",
+      name: "업무용 노트북",
+      note: null,
+      publicCode: "public-code",
+      operationalStatus: "ACTIVE",
+      assignments: [],
+      transferTickets: [],
+      auditEvents: []
+    });
+    const { default: AdminEquipmentDetail } = await import("./equipment/[assetNumber]/page");
+    const tree = await AdminEquipmentDetail({ params: Promise.resolve({ assetNumber: "EQ/LEGACY #1" }) });
+    const endpoints = findElements(tree, (element) => element.type === AdminForm)
+      .map((form) => (form.props as { endpoint: string }).endpoint);
+
+    expect(endpoints).toEqual([
+      "/api/admin/equipment/EQ%2FLEGACY%20%231/details",
+      "/api/admin/equipment/EQ%2FLEGACY%20%231",
+      "/api/admin/equipment/EQ%2FLEGACY%20%231/reassign"
+    ]);
+  });
+
   it("uses only serializable AdminForm props on user detail", async () => {
     const { default: AdminUserPage } = await import("./users/[employeeNumber]/page");
     const tree = await AdminUserPage({ params: Promise.resolve({ employeeNumber: "EMP-001" }) });
@@ -71,5 +95,25 @@ describe("admin detail pages", () => {
     expect(forms).toHaveLength(2);
     expect(forms.every(hasOnlyNonFunctionDirectProps)).toBe(true);
     expect(findElements(forms[0], (element) => element.type === "input" && (element.props as { name?: string }).name === "status")).toHaveLength(1);
+  });
+
+  it("encodes the employee number in user API endpoints", async () => {
+    userFindUnique.mockResolvedValueOnce({
+      id: "user-legacy",
+      employeeNumber: "EMP/LEGACY #1",
+      name: "관리자",
+      role: "ADMIN",
+      status: "ACTIVE",
+      assignments: []
+    });
+    const { default: AdminUserPage } = await import("./users/[employeeNumber]/page");
+    const tree = await AdminUserPage({ params: Promise.resolve({ employeeNumber: "EMP/LEGACY #1" }) });
+    const endpoints = findElements(tree, (element) => element.type === AdminForm)
+      .map((form) => (form.props as { endpoint: string }).endpoint);
+
+    expect(endpoints).toEqual([
+      "/api/admin/users/EMP%2FLEGACY%20%231",
+      "/api/admin/users/EMP%2FLEGACY%20%231/reset-password"
+    ]);
   });
 });

@@ -9,4 +9,11 @@ describe("normalizeEmployeeNumber", () => {
   it("rejects an empty employee number", () => {
     expect(() => normalizeEmployeeNumber("   ")).toThrow("INVALID_EMPLOYEE_NUMBER");
   });
+
+  it.each(["EMP 100", "EMP/100", "-EMP100", "EMP.100", "ſ", "E".repeat(65)])(
+    "rejects unsafe employee number %s",
+    (employeeNumber) => {
+      expect(() => normalizeEmployeeNumber(employeeNumber)).toThrow("INVALID_EMPLOYEE_NUMBER");
+    }
+  );
 });
