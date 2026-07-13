@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
@@ -15,25 +15,34 @@ export function EquipmentActions({ publicCode, actions }: { publicCode: string; 
   const [pending, setPending] = useState(instantTransfer);
   const [ticket, setTicket] = useState<{ id: string; qr: string; expiresAt: string } | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const mountedRef = useRef(false);
+  const instantRequestRef = useRef<string | null>(null);
 
   async function post(path: string, refresh = false) {
     setPending(true); setError(""); setMessage("");
-    const response = await fetch(path, { method: "POST" });
-    const body = await response.json();
-    setPending(false);
-    if (!response.ok) { setError(body.message ?? "작업을 완료하지 못했습니다."); return null; }
-    setMessage(body.message ?? "완료했습니다.");
-    if (refresh) router.refresh();
-    return body;
+    try {
+      const response = await fetch(path, { method: "POST" });
+      const body = await response.json() as { message?: string; [key: string]: unknown };
+      if (!response.ok) { setError(body.message ?? "작업을 완료하지 못했습니다."); return null; }
+      setMessage(body.message ?? "완료했습니다.");
+      if (refresh) router.refresh();
+      return body;
+    } catch {
+      setError("작업을 완료하지 못했습니다.");
+      return null;
+    } finally {
+      setPending(false);
+    }
   }
 
   async function createTicket() {
     const body = await post(`/api/equipment/${encodeURIComponent(publicCode)}/transfer-tickets`);
     if (!body) return;
-    const url = `${window.location.origin}/transfer/${body.token}`;
+    const url = `${window.location.origin}/transfer/${String(body.token)}`;
     const qr = await QRCode.toDataURL(url, { errorCorrectionLevel: "M", margin: 4, width: 320 });
-    setTicket({ id: body.ticketId, qr, expiresAt: body.expiresAt });
-    setRemainingSeconds(Math.max(0, Math.ceil((new Date(body.expiresAt).getTime() - Date.now()) / 1000)));
+    const expiresAt = String(body.expiresAt);
+    setTicket({ id: String(body.ticketId), qr, expiresAt });
+    setRemainingSeconds(Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000)));
   }
 
   useEffect(() => {
@@ -43,18 +52,25 @@ export function EquipmentActions({ publicCode, actions }: { publicCode: string; 
   }, [ticket]);
 
   useEffect(() => {
-    if (!instantTransfer) return;
-    void fetch(`/api/equipment/${encodeURIComponent(publicCode)}/instant-transfer`, { method: "POST" })
-      .then(async (response) => ({ response, body: await response.json() }))
-      .then(({ response, body }) => {
-        if (!response.ok) setError(body.message ?? "작업을 완료하지 못했습니다.");
-        else { setMessage(body.message ?? "전달을 완료했습니다."); router.refresh(); }
-      })
-      .catch(() => setError("네트워크 연결을 확인하고 다시 스캔해 주세요."))
-      .finally(() => setPending(false));
-    // The scan itself is the user's intent; run exactly once for this public code.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicCode]);
+    mountedRef.current = true;
+    if (instantTransfer && instantRequestRef.current !== publicCode) {
+      instantRequestRef.current = publicCode;
+      void (async () => {
+        try {
+          const response = await fetch(`/api/equipment/${encodeURIComponent(publicCode)}/instant-transfer`, { method: "POST" });
+          const body = await response.json() as { message?: string };
+          if (!mountedRef.current || instantRequestRef.current !== publicCode) return;
+          if (!response.ok) setError(body.message ?? "작업을 완료하지 못했습니다.");
+          else { setMessage(body.message ?? "전달을 완료했습니다."); router.refresh(); }
+        } catch {
+          if (mountedRef.current && instantRequestRef.current === publicCode) setError("네트워크 연결을 확인하고 다시 스캔해 주세요.");
+        } finally {
+          if (mountedRef.current && instantRequestRef.current === publicCode) setPending(false);
+        }
+      })();
+    }
+    return () => { mountedRef.current = false; };
+  }, [instantTransfer, publicCode, router]);
 
   if (ticket) return (
     <section className="card stack" style={{ padding: 24, textAlign: "center" }}>
@@ -65,7 +81,11 @@ export function EquipmentActions({ publicCode, actions }: { publicCode: string; 
         <img src={ticket.qr} alt="10분 동안 한 번 사용할 수 있는 장비 전달 QR" width={280} height={280} style={{ width: "min(100%, 280px)", margin: "0 auto" }} />
         <time dateTime={ticket.expiresAt} className="equipment-passport-meta">{String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:{String(remainingSeconds % 60).padStart(2, "0")} 남음</time>
       </> : <div className="notice notice-error">전달 QR이 만료되었습니다. 새 QR을 만들어 주세요.</div>}
-      <Button variant="secondary" onClick={async () => { await post(`/api/transfer-tickets/${ticket.id}/cancel`, true); setTicket(null); }}>전달 QR 취소</Button>
+      {error ? <div className="notice notice-error" role="alert">{error}</div> : null}
+      <Button variant="secondary" disabled={pending} onClick={async () => {
+        const body = await post(`/api/transfer-tickets/${ticket.id}/cancel`, true);
+        if (body) setTicket(null);
+      }}>전달 QR 취소</Button>
     </section>
   );
 

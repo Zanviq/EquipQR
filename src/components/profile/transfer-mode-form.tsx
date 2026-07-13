@@ -7,16 +7,25 @@ import { Button } from "@/components/ui/button";
 export function TransferModeForm({ current }: { current: TransferMode }) {
   const [mode, setMode] = useState<TransferMode>(current);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState(false);
   const [pending, setPending] = useState(false);
   async function save(event: FormEvent) {
-    event.preventDefault(); setPending(true); setMessage("");
-    const response = await fetch("/api/profile/transfer-mode", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ transferMode: mode })
-    });
-    setPending(false);
-    setMessage(response.ok ? "다음 신규 대여의 전달 방식을 저장했습니다." : "설정을 저장하지 못했습니다.");
+    event.preventDefault(); setPending(true); setMessage(""); setError(false);
+    try {
+      const response = await fetch("/api/profile/transfer-mode", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transferMode: mode })
+      });
+      await response.json();
+      setError(!response.ok);
+      setMessage(response.ok ? "다음 신규 대여의 전달 방식을 저장했습니다." : "설정을 저장하지 못했습니다.");
+    } catch {
+      setError(true);
+      setMessage("설정을 저장하지 못했습니다.");
+    } finally {
+      setPending(false);
+    }
   }
   return (
     <form className="stack" onSubmit={save}>
@@ -32,7 +41,7 @@ export function TransferModeForm({ current }: { current: TransferMode }) {
         </label>
       </fieldset>
       <div className="notice notice-info">이미 보유한 장비에는 적용되지 않습니다.</div>
-      {message ? <div role="status" className="notice notice-info">{message}</div> : null}
+      {message ? <div role={error ? "alert" : "status"} className={`notice ${error ? "notice-error" : "notice-info"}`}>{message}</div> : null}
       <Button disabled={pending}>{pending ? "저장 중…" : "설정 저장"}</Button>
     </form>
   );

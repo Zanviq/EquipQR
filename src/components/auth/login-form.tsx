@@ -15,19 +15,24 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
     setPending(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ employeeNumber: form.get("employeeNumber"), password: form.get("password") })
-    });
-    const body = await response.json();
-    if (!response.ok) {
-      setError(body.message ?? "로그인하지 못했습니다.");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ employeeNumber: form.get("employeeNumber"), password: form.get("password") })
+      });
+      const body = await response.json() as { message?: string };
+      if (!response.ok) {
+        setError(body.message ?? "로그인하지 못했습니다.");
+        return;
+      }
+      router.replace(safeReturnTo(returnTo));
+      router.refresh();
+    } catch {
+      setError("로그인하지 못했습니다.");
+    } finally {
       setPending(false);
-      return;
     }
-    router.replace(safeReturnTo(returnTo));
-    router.refresh();
   }
 
   return (

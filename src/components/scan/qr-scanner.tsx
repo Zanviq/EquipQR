@@ -21,6 +21,8 @@ export function QrScanner() {
   const [manual, setManual] = useState(false);
   const [cameraError, setCameraError] = useState(false);
   const [error, setError] = useState("");
+  const [scanError, setScanError] = useState("");
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -39,6 +41,8 @@ export function QrScanner() {
             active = false;
             controls?.stop();
             router.push(path);
+          } else if (result && active) {
+            setScanError("EquipQR 장비 또는 전달 QR을 스캔해 주세요.");
           }
         });
       } catch {
@@ -55,13 +59,19 @@ export function QrScanner() {
 
   async function submitAsset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
+    setError(""); setPending(true);
     const form = new FormData(event.currentTarget);
     const assetNumber = String(form.get("assetNumber") ?? "").trim();
-    const response = await fetch(`/api/equipment/by-asset/${encodeURIComponent(assetNumber)}`);
-    const body = await response.json();
-    if (!response.ok) return setError(body.message ?? "장비를 찾을 수 없습니다.");
-    router.push(`/scan/equipment/${body.publicCode}`);
+    try {
+      const response = await fetch(`/api/equipment/by-asset/${encodeURIComponent(assetNumber)}`);
+      const body = await response.json().catch(() => ({})) as { message?: string; publicCode?: string };
+      if (!response.ok || !body.publicCode) return setError(body.message ?? "장비를 찾을 수 없습니다.");
+      router.push(`/scan/equipment/${body.publicCode}`);
+    } catch {
+      setError("장비를 찾을 수 없습니다.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -74,6 +84,7 @@ export function QrScanner() {
         <p className="scanner-copy">장비 QR을 프레임 안에 맞춰 주세요.</p>
       </div>
       {cameraError ? <div className="notice notice-info">카메라를 사용할 수 없습니다. 자산번호로 장비를 찾을 수 있습니다.</div> : null}
+      {scanError ? <div className="notice notice-error" role="alert">{scanError}</div> : null}
       <Button variant="secondary" className="button-block" onClick={() => setManual((value) => !value)}>자산번호로 찾기</Button>
       {manual ? (
         <form className="stack card" style={{ padding: 20 }} onSubmit={submitAsset}>
@@ -82,7 +93,7 @@ export function QrScanner() {
             <input className="input font-data" id="assetNumber" name="assetNumber" required placeholder="예: EQ-0012" />
           </div>
           {error ? <div className="notice notice-error" role="alert">{error}</div> : null}
-          <Button>장비 찾기</Button>
+          <Button disabled={pending}>{pending ? "찾는 중…" : "장비 찾기"}</Button>
         </form>
       ) : null}
     </div>
