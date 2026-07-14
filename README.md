@@ -32,6 +32,48 @@ npm run dev
 
 ## 회사 서버 배포
 
+### Ubuntu 서버 최초 세팅
+
+Ubuntu 서버에서는 Docker Engine과 Compose plugin을 설치한 뒤 저장소를 내려받습니다.
+
+```bash
+sudo apt update
+sudo apt install -y git ca-certificates curl gnupg
+
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+sudo usermod -aG docker "$USER"
+newgrp docker
+```
+
+프로젝트는 새 GitHub 저장소에서 받습니다.
+
+```bash
+git clone https://github.com/itop-page/EquipQR.git
+cd EquipQR
+git checkout main
+```
+
+운영 `.env`는 저장소 루트에 생성합니다. `DATABASE_URL`의 host는 Docker Compose 서비스명인 `db`여야 하며, Cloudflare Tunnel public hostname의 service는 `http://web:3000`으로 설정합니다.
+
+```env
+POSTGRES_PASSWORD=강한_DB_비밀번호
+DATABASE_URL=postgresql://equipqr:강한_DB_비밀번호@db:5432/equipqr
+APP_ORIGIN=https://qr.itop.live
+CLOUDFLARE_TUNNEL_TOKEN=Cloudflare_Tunnel_Token_값
+SESSION_COOKIE_SECURE=true
+```
+
 1. Cloudflare Zero Trust에서 Tunnel과 public hostname을 만들고 서비스 주소를 `http://web:3000`으로 지정합니다.
 2. 서버에 저장소를 내려받고 `.env`를 생성합니다. `POSTGRES_PASSWORD`, 내부 호스트를 `db`로 지정한 `DATABASE_URL`, `CLOUDFLARE_TUNNEL_TOKEN`, `APP_ORIGIN=https://실제-호스트명`을 반드시 설정합니다.
 3. 외부에 포트를 공개하지 않은 채 DB와 마이그레이션을 먼저 실행합니다.
