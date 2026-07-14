@@ -34,11 +34,11 @@ npm run dev
 
 ### Ubuntu 서버 최초 세팅
 
-Ubuntu 서버에서는 Docker Engine과 Compose plugin을 설치한 뒤 저장소를 내려받습니다.
+Ubuntu 서버에서는 GitHub CLI, Docker Engine, Compose plugin을 설치한 뒤 저장소를 내려받습니다.
 
 ```bash
 sudo apt update
-sudo apt install -y git ca-certificates curl gnupg
+sudo apt install -y git gh ca-certificates curl gnupg
 
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
@@ -56,7 +56,26 @@ sudo usermod -aG docker "$USER"
 newgrp docker
 ```
 
-프로젝트는 새 GitHub 저장소에서 받습니다.
+외주 서버에서 일반 `git clone` 인증이 실패하면 GitHub CLI로 로그인한 뒤 저장소를 받습니다.
+
+```bash
+gh auth login
+gh auth status
+gh repo clone itop-page/EquipQR
+cd EquipQR
+git checkout main
+```
+
+`gh auth login` 선택지는 보통 아래처럼 진행합니다.
+
+- `GitHub.com`
+- `HTTPS`
+- `Authenticate Git with your GitHub credentials`: `Yes`
+- `Login with a web browser`
+
+브라우저 로그인 화면이 뜨지 않는 서버라면, 터미널에 표시되는 one-time code를 작업 PC 브라우저의 GitHub 인증 페이지에 입력하면 됩니다.
+
+GitHub 인증이 이미 되어 있는 서버에서는 일반 clone도 가능합니다.
 
 ```bash
 git clone https://github.com/itop-page/EquipQR.git
