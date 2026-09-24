@@ -69,7 +69,7 @@
 
 ```bash
 # Clone repository
-git clone https://github.com/itop-page/EquipQR.git
+git clone https://github.com/Zanviq/EquipQR.git
 cd EquipQR
 
 # Environment variables (defaults work for local use)

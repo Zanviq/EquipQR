@@ -61,7 +61,7 @@ newgrp docker
 ```bash
 gh auth login
 gh auth status
-gh repo clone itop-page/EquipQR
+gh repo clone Zanviq/EquipQR
 cd EquipQR
 git checkout main
 ```
@@ -78,7 +78,7 @@ git checkout main
 GitHub 인증이 이미 되어 있는 서버에서는 일반 clone도 가능합니다.
 
 ```bash
-git clone https://github.com/itop-page/EquipQR.git
+git clone https://github.com/Zanviq/EquipQR.git
 cd EquipQR
 git checkout main
 ```

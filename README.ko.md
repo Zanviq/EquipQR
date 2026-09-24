@@ -69,7 +69,7 @@
 
 ```bash
 # 저장소 받기
-git clone https://github.com/itop-page/EquipQR.git
+git clone https://github.com/Zanviq/EquipQR.git
 cd EquipQR
 
 # 환경 변수 (로컬 실행은 기본값 그대로 사용 가능)
