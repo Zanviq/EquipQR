@@ -1,145 +1,210 @@
-# EquipQR
+<div align="center">
 
-QR로 장비 대여 현황을 파악하고 사용자 간 전달을 확인하는 사내 웹 서비스입니다.
+# 🏷️ EquipQR
 
-## 제공 기능
+**Track who holds each piece of equipment and hand it over with a QR scan**
 
-- 사번/비밀번호 로그인과 직원·관리자 권한
-- 정적 장비 QR을 이용한 대여와 반납
-- 기본 10분 일회용 전달 QR, 선택 가능한 장비 QR 즉시 전달
-- 프로필의 전달 정책을 신규 대여 시점에 스냅샷으로 고정
-- 내 장비 목록, 카메라 스캔과 자산번호 직접 입력
-- 사용자·장비·책임자·운영 상태 관리와 삭제 불가 감사 기록
-- A4/50×30mm 장비 QR 라벨 인쇄
-- Docker Compose와 Cloudflare Tunnel 기반 사내 서버 배포
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
-## 로컬 개발
+**English** | [한국어](./README.ko.md)
 
-Node.js 24와 Docker가 필요합니다.
+</div>
+
+---
+
+## 💭 Developer's Note
+
+> *<!-- TODO: one-line quote -->*
+
+<!-- TODO: 개발 동기 -->
+
+---
+
+## ✨ Features
+
+### 📷 QR Checkout and Return
+- Each piece of equipment has a static QR code that links to `/scan/equipment/{publicCode}`. The public code is a random 24-byte base64url string, separate from the asset number
+- Scanning shows the item's current status and offers checkout or return. Users can also type the asset number
+- Checkout and return run in PostgreSQL `Serializable` transactions. A partial unique index allows only one active assignment per item
+- Profile setting picks what a scan does: run the action immediately, or ask for confirmation first
+
+### 🔁 Handover Between Users
+- **Transfer QR (default)**: the current holder issues a one-time QR that expires after 10 minutes. The recipient scans it to accept. Only the token's SHA-256 hash is stored
+- **Instant equipment QR (optional)**: anyone who scans the equipment QR takes it over directly, with no transfer QR needed
+- The holder's transfer mode is copied into the assignment when they take the item, so later profile changes do not affect items they already hold
+- After an instant transfer, both users get an in-app notification. The client polls `/api/notifications` every 10 seconds
+- After an instant transfer, the previous holder still sees the item under "전달한 장비" (Transferred) in My Equipment until it is returned or comes back to them
+
+### 🛠️ Admin Console
+- Dashboard with counts of available, checked-out and out-of-service items, recent events, loans older than 30 days, and the top 10 users by items held
+- Create users, switch them between active and inactive, and reset passwords (12 characters minimum)
+- Register equipment, edit its details, set it in or out of service, and reassign or recall it with a required reason
+- Paginated history of audit events (checkout, return, transfer, admin actions), searchable by equipment or user
+
+### 🖨️ QR Label Printing
+- Select equipment and print labels in bulk on A4
+- Label width is adjustable from 40 to 80 mm. Height follows at 60% of the width (minimum 24 mm)
+- Labels per page are calculated from the A4 printable area (190 × 277 mm) with a 2 mm gap
+
+### 🔐 Authentication and Operations
+- Login with employee number and password. Passwords are hashed with Argon2id (`@node-rs/argon2`)
+- Sessions are random tokens stored as SHA-256 hashes in the DB and sent as an `httpOnly` cookie. They expire after 12 hours
+- In-memory login rate limit: 10 attempts per account + IP and 200 per IP, within 15 minutes
+- `/api/health/live` checks that the process is up. `/api/health/ready` checks the DB connection and that an active admin exists
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- [Docker](https://www.docker.com/) with Compose
+- No external API keys are required. A [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) token is only needed for the production setup
+
+### Installation
 
 ```bash
+# Clone repository
+git clone https://github.com/itop-page/EquipQR.git
+cd EquipQR
+
+# Environment variables (defaults work for local use)
 cp .env.example .env
-# .env의 POSTGRES_PASSWORD와 DATABASE_URL 비밀번호를 동일하게 변경
-docker compose up -d db
+
+# Build and run: db → migrate (migrations + demo seed) → web
+docker compose up --build
+```
+
+Open `http://localhost:3000`. The `migrate` service applies Prisma migrations, then seeds demo data when `SEED_DEMO=true` (default). The seed skips anything that already exists, so restarts do not duplicate data.
+
+Browsers only allow camera access over HTTPS, so on `localhost` use asset number entry instead of the camera.
+
+### Demo Account
+
+| Employee number | Password | Role |
+|---|---|---|
+| `demo` | `demo1234` | Admin |
+
+The seed also registers 5 demo items (`DEMO-NB-001`, `DEMO-NB-002`, `DEMO-TAB-001`, `DEMO-CAM-001`, `DEMO-PJ-001`). The demo account is admin, so it can use both the employee screens and the admin console.
+
+### Local Development
+
+Requires Node.js 24. With the `db` service running (`docker compose up -d db`):
+
+```bash
 npm ci
 npm run prisma:generate
 npx prisma migrate deploy
-INITIAL_ADMIN_PASSWORD='12자-이상의-안전한-비밀번호' npm run admin:bootstrap -- --employee-number ADMIN001 --name 관리자
 npm run dev
 ```
 
-브라우저에서 `http://localhost:3000`에 접속합니다. 휴대폰 카메라는 HTTPS 보안 컨텍스트에서 사용해야 하므로 실제 기기 검증은 Tunnel 주소에서 수행합니다.
+### Deployment
 
-## 회사 서버 배포
+For production (Docker Compose + Cloudflare Tunnel), backup and restore, see [DEPLOYMENT.md](./DEPLOYMENT.md) (Korean).
 
-### Ubuntu 서버 최초 세팅
+---
 
-Ubuntu 서버에서는 GitHub CLI, Docker Engine, Compose plugin을 설치한 뒤 저장소를 내려받습니다.
+## 🛠️ Tech Stack
 
-```bash
-sudo apt update
-sudo apt install -y git gh ca-certificates curl gnupg
+| Category | Technology |
+|----------|------------|
+| **Framework** | Next.js 16 (App Router), React 19, TypeScript |
+| **Database** | PostgreSQL 18, Prisma 7 (`@prisma/adapter-pg`) |
+| **Auth** | Argon2id (`@node-rs/argon2`), DB-backed session cookie |
+| **QR** | `@zxing/browser` (scan), `qrcode` (generate) |
+| **Validation** | Zod 4 |
+| **Styling** | Tailwind CSS 4, Pretendard |
+| **Testing** | Vitest, Testing Library |
+| **Infra** | Docker Compose, Cloudflare Tunnel |
 
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+---
 
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+## 📁 Project Structure
 
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-sudo usermod -aG docker "$USER"
-newgrp docker
+```
+EquipQR/
+├── 📂 prisma/
+│   ├── schema.prisma             # Users, sessions, equipment, assignments, transfer tickets, audit events
+│   └── 📂 migrations/            # SQL migrations (incl. one-active-assignment partial index)
+├── 📂 scripts/
+│   ├── create-initial-admin.ts   # First admin bootstrap
+│   ├── seed-demo.ts              # Demo account and equipment seed
+│   ├── backup-db.sh              # pg_dump backup with checksum
+│   └── restore-db.sh             # Verified restore
+├── 📂 src/
+│   ├── 📂 app/
+│   │   ├── 📂 (auth)/login/      # Login page
+│   │   ├── 📂 (employee)/        # Scan, my equipment, profile, transfer accept
+│   │   ├── 📂 admin/             # Dashboard, users, equipment, history, label print
+│   │   └── 📂 api/               # Route handlers (auth, equipment, transfer, admin, health)
+│   ├── 📂 components/            # UI components (scanner, passport, notifications, print)
+│   ├── 📂 server/
+│   │   ├── 📂 auth/              # Password hashing, sessions, current user
+│   │   ├── 📂 circulation/       # Checkout and return
+│   │   ├── 📂 transfer/          # Transfer tickets, instant transfer
+│   │   ├── 📂 admin/             # Admin operations and dashboard
+│   │   └── 📂 http/              # Rate limit, response helpers, schemas
+│   ├── 📂 lib/                   # Print layout, safe redirects, shared helpers
+│   └── proxy.ts                  # Redirects employee routes to /login without a session
+├── Dockerfile                    # Multi-stage build (deps → builder → migrator → runner)
+├── compose.yaml                  # Local: db, migrate (+ demo seed), web
+└── compose.production.yaml       # Production: db, migrate, web, tunnel
 ```
 
-외주 서버에서 일반 `git clone` 인증이 실패하면 GitHub CLI로 로그인한 뒤 저장소를 받습니다.
+---
 
-```bash
-gh auth login
-gh auth status
-gh repo clone itop-page/EquipQR
-cd EquipQR
-git checkout main
-```
+## 💡 How to Use
 
-`gh auth login` 선택지는 보통 아래처럼 진행합니다.
+The UI is in Korean. Menu names are shown in parentheses.
 
-- `GitHub.com`
-- `HTTPS`
-- `Authenticate Git with your GitHub credentials`: `Yes`
-- `Login with a web browser`
+1. **Register Equipment**: In Admin → Equipment (장비 관리), add an item with its asset number and name
+2. **Print Labels**: Select items, click **선택한 QR 인쇄**, adjust the label width, and print on A4
+3. **Check Out**: On **Scan (스캔)**, scan the equipment QR or enter the asset number, then click **대여하기**
+4. **Hand Over**: In **My Equipment (내 장비)**, open an item and click **전달 QR 만들기**. The recipient scans it within 10 minutes. The holder can cancel it with **전달 QR 취소**
+5. **Return**: Scan the equipment QR again and click **반납하기**
+6. **Change Settings**: In **Profile (프로필)**, choose the transfer policy (transfer QR or instant) and the scan action (immediate or confirm)
+7. **Review History**: In Admin → History (이용 기록), search events by equipment name, asset number, user name or employee number
 
-브라우저 로그인 화면이 뜨지 않는 서버라면, 터미널에 표시되는 one-time code를 작업 PC 브라우저의 GitHub 인증 페이지에 입력하면 됩니다.
+---
 
-GitHub 인증이 이미 되어 있는 서버에서는 일반 clone도 가능합니다.
+## 🎨 Screenshots
 
-```bash
-git clone https://github.com/itop-page/EquipQR.git
-cd EquipQR
-git checkout main
-```
+<div align="center">
 
-운영 `.env`는 저장소 루트에 생성합니다. `DATABASE_URL`의 host는 Docker Compose 서비스명인 `db`여야 하며, Cloudflare Tunnel public hostname의 service는 `http://web:3000`으로 설정합니다.
+![Scan](image/Scan.png)
 
-```env
-POSTGRES_PASSWORD=강한_DB_비밀번호
-DATABASE_URL=postgresql://equipqr:강한_DB_비밀번호@db:5432/equipqr
-APP_ORIGIN=https://qr.itop.live
-CLOUDFLARE_TUNNEL_TOKEN=Cloudflare_Tunnel_Token_값
-SESSION_COOKIE_SECURE=true
-```
+<table>
+  <tr>
+    <td><img src="image/Equipment.png" width="400"/></td>
+    <td><img src="image/MyEquipment.png" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="image/Transfer.png" width="400"/></td>
+    <td><img src="image/Profile.png" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="image/AdminDashboard.png" width="400"/></td>
+    <td><img src="image/QrPrint.png" width="400"/></td>
+  </tr>
+</table>
+</div>
 
-1. Cloudflare Zero Trust에서 Tunnel과 public hostname을 만들고 서비스 주소를 `http://web:3000`으로 지정합니다.
-2. 서버에 저장소를 내려받고 `.env`를 생성합니다. `POSTGRES_PASSWORD`, 내부 호스트를 `db`로 지정한 `DATABASE_URL`, `CLOUDFLARE_TUNNEL_TOKEN`, `APP_ORIGIN=https://실제-호스트명`을 반드시 설정합니다.
-3. 외부에 포트를 공개하지 않은 채 DB와 마이그레이션을 먼저 실행합니다.
+---
 
-```bash
-docker compose -f compose.production.yaml up -d db
-docker compose -f compose.production.yaml run --rm --build migrate
-```
+## 📝 License
 
-최초 관리자는 Tunnel을 열기 전에 일회성 컨테이너로 생성합니다. `/api/health/ready`는 DB와 활성 관리자 존재를 모두 확인하므로, 이 단계 전에는 `503`이 정상입니다.
+<!-- TODO: No LICENSE file in the repository yet. Choose a license and add it. -->
 
-```bash
-docker compose -f compose.production.yaml run --rm \
-  -e INITIAL_ADMIN_PASSWORD='12자-이상의-안전한-비밀번호' migrate \
-  npx tsx scripts/create-initial-admin.ts \
-  --employee-number ADMIN001 --name 관리자
-```
+---
 
-관리자를 만든 뒤 전체 스택을 실행하고 준비 상태를 확인합니다.
+<div align="center">
 
-```bash
-docker compose -f compose.production.yaml up -d --build
-docker compose -f compose.production.yaml ps
-docker compose -f compose.production.yaml exec -T web \
-  node -e "fetch('http://127.0.0.1:3000/api/health/ready').then(async r=>{console.log(r.status, await r.text());if(!r.ok)process.exit(1)})"
-docker compose -f compose.production.yaml logs -f web tunnel
-```
+| 👤 **Developer** | ✉️ **Email** |
+|:---:|:---:|
+| Zanviq | zanviq.dev@gmail.com |
 
-`/api/health/live`는 웹 프로세스 생존만 확인하고, `/api/health/ready`는 DB 연결과 활성 관리자 존재를 확인합니다. 운영 healthcheck와 Tunnel은 `ready`가 `200`일 때만 트래픽을 엽니다.
-
-## 백업과 복구
-
-기본 백업 위치는 저장소 밖의 `/var/backups/equipqr`입니다. 최초 한 번 운영 계정만 접근할 수 있도록 준비합니다.
-
-```bash
-sudo install -d -m 700 -o "$USER" -g "$(id -gn)" /var/backups/equipqr
-bash scripts/backup-db.sh
-```
-
-백업은 임시 파일에 생성되고 gzip 검증 후 원자적으로 게시되며, `.sha256` checksum이 함께 생성됩니다. 디렉터리는 `700`, 파일은 `600`으로 강제됩니다. 다른 위치는 첫 번째 인자 또는 `EQUIPQR_BACKUP_DIR`로 지정할 수 있습니다.
-
-복구는 checksum이 있으면 검증하고, 웹과 Tunnel을 중지한 뒤 현재 DB의 pre-restore 백업을 먼저 생성합니다. 화면에 표시되는 `RESTORE 파일명`을 정확히 입력해야 진행되며, SQL은 단일 transaction으로 적용됩니다. 이후 현재 코드의 migration, readiness 점검, 서비스 재시작까지 수행합니다.
-
-```bash
-bash scripts/restore-db.sh /var/backups/equipqr/equipqr-YYYYMMDDTHHMMSSZ.sql.gz
-```
-
-백업 파일과 `.sha256`은 서버 밖의 암호화 저장소로 복제하고 정기적으로 복구 리허설을 수행합니다. 백업 성공은 파일 존재만이 아니라 checksum 검증과 복구 후 `/api/health/ready`로 판정합니다.
-
-> `docker compose down -v`, `docker volume rm`, `docker volume prune`, `docker system prune --volumes`는 DB 볼륨을 삭제할 수 있습니다. 데이터 폐기와 검증된 백업이 명시적으로 승인된 경우 외에는 실행하지 마세요. 일반적인 `up -d --build`, `restart`, `down`(단, `-v` 없음)은 named volume을 보존합니다.
+</div>
