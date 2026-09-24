@@ -175,20 +175,24 @@ The UI is in Korean. Menu names are shown in parentheses.
 
 <div align="center">
 
-![Scan](image/Scan.png)
+**Employee (mobile)**
 
 <table>
   <tr>
-    <td><img src="image/Equipment.png" width="400"/></td>
-    <td><img src="image/MyEquipment.png" width="400"/></td>
+    <td><img src="image/Scan.png" width="180"/></td>
+    <td><img src="image/Equipment.png" width="180"/></td>
+    <td><img src="image/Transfer.png" width="180"/></td>
+    <td><img src="image/MyEquipment.png" width="180"/></td>
+    <td><img src="image/Profile.png" width="180"/></td>
   </tr>
+</table>
+
+**Admin console**
+
+<table>
   <tr>
-    <td><img src="image/Transfer.png" width="400"/></td>
-    <td><img src="image/Profile.png" width="400"/></td>
-  </tr>
-  <tr>
-    <td><img src="image/AdminDashboard.png" width="400"/></td>
-    <td><img src="image/QrPrint.png" width="400"/></td>
+    <td><img src="image/AdminDashboard.png" width="440"/></td>
+    <td><img src="image/QrPrint.png" width="440"/></td>
   </tr>
 </table>
 </div>
